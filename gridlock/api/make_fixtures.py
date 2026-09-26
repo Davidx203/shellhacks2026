@@ -8,7 +8,8 @@ from pathlib import Path
 from zipfile import ZipFile
 
 ROOT = Path(__file__).resolve().parents[1]
-WORKBOOK = ROOT / "Sperry-Tech-Challenge" / "Projects_Overlaps.xlsx"
+REPO_ROOT = ROOT.parent
+WORKBOOK = REPO_ROOT / "Sperry-Tech-Challenge" / "Projects_Overlaps.xlsx"
 OUT_DIR = ROOT / "data" / "fixtures"
 
 NS = {
