@@ -4,4 +4,5 @@ node_modules/
 __pycache__/
 .DS_Store
 venv
-.venv
+.venvgridlock/data/raw/gpc_irp_vol3.txt
+gridlock/data/raw/desc_pages/
