@@ -1,7 +1,6 @@
 from math import radians, cos, sin, asin, sqrt
 
-def main():
-    return haversine_miles(25.7617, -80.1918, 25.9000, -80.1918)
+
 
 def haversine_miles(lat1, lon1, lat2, lon2):
     R = 3958.8 # Earth radius in miles
@@ -10,6 +9,4 @@ def haversine_miles(lat1, lon1, lat2, lon2):
     return 2 * R * asin(sqrt(a))
 
 
-
-
-
+print(haversine_miles(25.7617, -80.1918, 25.9000, -80.1918))
