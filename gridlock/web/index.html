@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Gridlock Radar</title>
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link href="https://api.mapbox.com/mapbox-gl-js/v3.8.0/mapbox-gl.css" rel="stylesheet" />
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
@@ -12,7 +12,7 @@
       <aside class="sidebar">
         <header>
           <p class="eyebrow">Gridlock Radar</p>
-          <h1>Transmission overlap map</h1>
+          <h1>Transmission overlap radar</h1>
         </header>
         <section class="legend">
           <div><span class="key gpc"></span>Georgia Power</div>
@@ -24,16 +24,58 @@
           <p>Click a ranked overlap to zoom in and show the 25 mile coordination radius.</p>
         </section>
         <section>
+          <div class="section-heading">
+            <h2>Filters</h2>
+            <span id="filter-count">0 shown</span>
+          </div>
+          <div class="filters">
+            <label>
+              <span>Search</span>
+              <input id="filter-search" type="search" placeholder="Project or overlap" />
+            </label>
+            <label>
+              <span>Max distance</span>
+              <select id="filter-distance">
+                <option value="">Any</option>
+                <option value="5">5 mi</option>
+                <option value="10">10 mi</option>
+                <option value="15">15 mi</option>
+                <option value="25">25 mi</option>
+              </select>
+            </label>
+            <label>
+              <span>Min score</span>
+              <select id="filter-score">
+                <option value="">Any</option>
+                <option value="0.8">0.80+</option>
+                <option value="0.6">0.60+</option>
+                <option value="0.4">0.40+</option>
+              </select>
+            </label>
+            <label class="check-row">
+              <input id="filter-voltage" type="checkbox" />
+              <span>Voltage match only</span>
+            </label>
+          </div>
+        </section>
+        <section>
           <h2>Ranked overlaps</h2>
           <ol id="overlaps" class="overlaps"></ol>
         </section>
       </aside>
       <section class="map-area">
         <div id="map"></div>
+        <div id="camera-controls" class="camera-controls is-disabled" aria-label="Opportunity camera controls">
+          <button id="view-prev" type="button" title="Previous camera view">‹</button>
+          <button type="button" data-camera-view="gpc">G site</button>
+          <button type="button" data-camera-view="center">Center</button>
+          <button type="button" data-camera-view="desc">D site</button>
+          <button id="view-next" type="button" title="Next camera view">›</button>
+        </div>
         <div id="status" class="status">Loading fixture data...</div>
       </section>
     </main>
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://api.mapbox.com/mapbox-gl-js/v3.8.0/mapbox-gl.js"></script>
     <script src="./main.js"></script>
   </body>
 </html>
