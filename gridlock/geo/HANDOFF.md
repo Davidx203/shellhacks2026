@@ -1,0 +1,9 @@
+# Geo handoff (2026-09-26)
+
+Run `python3 gridlock/geo/run_all.py` from the repository root after installing `requirements.txt`. The first run caches OSM substations and Census GA/SC state boundaries in `gridlock/data/cache/`; later runs use the cache. The command writes the three contract CSVs and `data/processed/geo_review_queue.csv`. The API loader can then use `python3 gridlock/api/load_db.py --source processed`.
+
+Current output: 252 projects, 30 overlaps under 25 miles, and 10 cost briefs. GPC tiers: 115 high, 32 medium, 29 low, 32 unmatched. DESC tiers: 9 high, 12 medium, 13 low, 10 unmatched. The 84 low/unmatched rows in `geo_review_queue.csv` are sorted by approximate distance to the GA/SC border; rows with no location appear last. Luis should prioritize its first rows, especially `DESC_6810O`, `DESC_06367D-G`, and `DESC_6810A`, which affect leading opportunities.
+
+Top five pairs by the Geo brief's formula: McIntosh–Purrysburg / Jasper–Okatie; Deptford–Magnolia / Okatie–Bluffton; Evans–Thurmond #5 / Hooks–Thurmond; Evans–Thurmond #6 / Hooks–Thurmond; Goshen / Urquhart–Aiken. The first, second, and third pairs include low-confidence endpoint matches, so Luis's review can materially reorder the list. The six fixture distances and date gaps pass; the fixture sheet's stored scores use a different ordering, so `overlaps.csv` follows the formula in `02_GEO_LEAD_ANDERS.md`.
+
+David: `api/load_db.py --source processed` loads all three CSVs, and `GET /overlaps/OVL_1` returns the stored brief. The current `GET /briefs/{overlap_id}` slider endpoint uses its own fixed 100 ft width and 5 mile default, so its initial estimate can differ from `briefs.csv`. It needs to use the saved brief's width and corridor defaults before CP4. The `PATCH /projects/{id}` center fixes are reapplied from `manual_fixes.csv` by `run_all.py`.
