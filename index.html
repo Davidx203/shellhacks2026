@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Map Drawing Studio</title>
+    <link
+      rel="stylesheet"
+      href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+      integrity="sha256-p4NxAoJBhIINfQvqO8Z1mdr4wLjkyKUpwNuexB8sE5o="
+      crossorigin=""
+    />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <aside class="panel">
+        <div class="brand">
+          <span class="brand-mark"></span>
+          <div>
+            <h1>Map Studio</h1>
+            <p>Draw points, routes, zones, and notes.</p>
+          </div>
+        </div>
+
+        <section class="tool-section" aria-label="Drawing tools">
+          <h2>Tools</h2>
+          <div class="tool-grid">
+            <button class="tool active" data-tool="select" title="Select and pan">Select</button>
+            <button class="tool" data-tool="point" title="Drop a location point">Point</button>
+            <button class="tool" data-tool="line" title="Draw a connected route">Line</button>
+            <button class="tool" data-tool="polygon" title="Draw an area">Area</button>
+            <button class="tool" data-tool="circle" title="Draw a radius">Radius</button>
+            <button class="tool" data-tool="freehand" title="Sketch freely">Sketch</button>
+          </div>
+        </section>
+
+        <section class="tool-section" aria-label="Drawing style">
+          <h2>Style</h2>
+          <div class="field-row">
+            <label for="color">Color</label>
+            <input id="color" type="color" value="#e94f37" />
+          </div>
+          <div class="field-row">
+            <label for="label">Label</label>
+            <input id="label" type="text" placeholder="Optional name" maxlength="40" />
+          </div>
+        </section>
+
+        <section class="tool-section" aria-label="Actions">
+          <h2>Actions</h2>
+          <div class="action-grid">
+            <button id="finish-shape">Finish Shape</button>
+            <button id="undo-point">Undo Point</button>
+            <button id="delete-selected">Delete Selected</button>
+            <button id="clear-all">Clear All</button>
+          </div>
+        </section>
+
+        <section class="tool-section grow" aria-label="Annotations">
+          <div class="section-head">
+            <h2>Annotations</h2>
+            <span id="count">0</span>
+          </div>
+          <ol id="annotation-list" class="annotation-list"></ol>
+        </section>
+      </aside>
+
+      <section class="map-wrap" aria-label="Interactive map">
+        <div class="topbar">
+          <div class="search-box">
+            <input id="search" type="search" placeholder="Search a city or address" />
+            <button id="search-btn">Go</button>
+          </div>
+          <div id="hint" class="hint">Select a tool, then draw on the map.</div>
+        </div>
+        <div id="map"></div>
+      </section>
+    </main>
+
+    <script
+      src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+      integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+      crossorigin=""
+    ></script>
+    <script src="app.js"></script>
+  </body>
+</html>

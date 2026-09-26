@@ -1,0 +1,7 @@
+overlap_id,project_id_gpc,project_id_desc,distance_mi,time_gap_days,voltage_match,score,rank
+OVL_1,GPC_1,DESC_2,4.09,3074,true,0.836,1
+OVL_2,GPC_2,DESC_3,5.65,152,true,0.774,2
+OVL_3,GPC_3,DESC_3,7.55,517,false,0.698,3
+OVL_4,GPC_1,DESC_1,8.01,3074,true,0.68,4
+OVL_5,GPC_2,DESC_5,14.34,365,false,0.426,5
+OVL_6,GPC_3,DESC_5,14.81,730,true,0.408,6
