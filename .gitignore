@@ -3,3 +3,5 @@ gridlock.db
 node_modules/
 __pycache__/
 .DS_Store
+venv
+.venv
