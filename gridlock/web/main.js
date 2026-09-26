@@ -2,8 +2,14 @@ const API = "http://localhost:8000";
 const map = L.map("map").setView([33.0, -81.5], 7);
 const projectLayers = new Map();
 const overlapLayers = new Map();
+const opportunityCapLayers = new Map();
+const opportunityCapPoints = new Map();
 const allOverlaps = new Map();
+const substationLayers = new Map();
+const substationGroups = new Map();
 const overlapGroup = L.layerGroup().addTo(map);
+const opportunityCapGroup = L.layerGroup().addTo(map);
+const substationGroup = L.layerGroup().addTo(map);
 let selectedRadii = [];
 let selectedFocus = [];
 let selectedOverlapId = null;
@@ -62,15 +68,6 @@ function addProject(project) {
   if (pts) {
     layers.push(L.polyline(pts, style).addTo(map));
   }
-  layers.push(
-    L.circleMarker(center, {
-      ...style,
-      radius: pts ? 6 : 9,
-      color: "#ffffff",
-      weight: 3,
-    }).addTo(map)
-  );
-
   const layer = L.layerGroup(layers).addTo(map);
 
   layers.forEach((item) => item.bindPopup(`
@@ -81,6 +78,71 @@ function addProject(project) {
     Source: ${project.source_ref || project.source_file || "fixture"}
   `));
   projectLayers.set(project.project_id, layer);
+}
+
+function coordinateKey(latlng) {
+  return `${latlng[0].toFixed(6)},${latlng[1].toFixed(6)}`;
+}
+
+function milesBetween(a, b) {
+  const radius = 3958.8;
+  const toRad = (deg) => (deg * Math.PI) / 180;
+  const dLat = toRad(b[0] - a[0]);
+  const dLon = toRad(b[1] - a[1]);
+  const lat1 = toRad(a[0]);
+  const lat2 = toRad(b[0]);
+  const h =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLon / 2) ** 2;
+  return 2 * radius * Math.asin(Math.sqrt(h));
+}
+
+function buildSubstationGroups(projects) {
+  substationGroups.clear();
+  projects.forEach((project) => {
+    const pts = endpoints(project);
+    const points = pts || [projectCenter(project)].filter(Boolean);
+    points.forEach((point) => {
+      let key = [...substationGroups.entries()].find(([, group]) => milesBetween(group.point, point) <= 0.1)?.[0];
+      if (!key) key = coordinateKey(point);
+      if (!substationGroups.has(key)) {
+        substationGroups.set(key, { point, utilities: new Set(), projectIds: new Set(), names: [] });
+      }
+      const group = substationGroups.get(key);
+      group.utilities.add(project.utility);
+      group.projectIds.add(project.project_id);
+      group.names.push(`${project.utility}: ${project.project_name}`);
+    });
+  });
+}
+
+function drawSubstations() {
+  substationLayers.forEach((layer) => substationGroup.removeLayer(layer));
+  substationLayers.clear();
+  substationGroups.forEach((group, key) => {
+    const layer = substationMarker(group).addTo(substationGroup);
+    substationLayers.set(key, layer);
+  });
+}
+
+function substationMarker(group) {
+  const utilities = [...group.utilities];
+  const isShared = utilities.length > 1;
+  const primaryColor = colors[utilities[0]] || "#555";
+  const secondaryColor = colors[utilities[1]] || primaryColor;
+  const markerClass = isShared ? "substation-marker shared" : "substation-marker normal";
+
+  const marker = L.marker(group.point, {
+    icon: L.divIcon({
+      className: "",
+      html: `<div class="${markerClass}" style="--utility-color:${primaryColor}; --utility-color-2:${secondaryColor}"></div>`,
+      iconSize: [24, 24],
+      iconAnchor: [12, 12],
+    }),
+    zIndexOffset: 450,
+  });
+  marker.bindPopup(`<strong>Substation / project location</strong><br>${group.names.join("<br>")}`);
+  return marker;
 }
 
 function addOverlap(overlap) {
@@ -105,6 +167,13 @@ function addOverlap(overlap) {
     selectOverlap(overlap);
   });
   overlapLayers.set(overlap.overlap_id, layer);
+
+  const caps = L.layerGroup([
+    opportunityCapForPoint(gpc, "G", colors.GPC),
+    opportunityCapForPoint(desc, "D", colors.DESC),
+  ]).addTo(opportunityCapGroup);
+  opportunityCapLayers.set(overlap.overlap_id, caps);
+  opportunityCapPoints.set(overlap.overlap_id, [gpc, desc]);
 }
 
 function renderList(overlaps) {
@@ -144,8 +213,6 @@ function selectOverlap(overlap) {
     L.circle(desc, radiusStyle()).addTo(map),
   ];
   selectedFocus = [
-    centerBadge(gpc, "G"),
-    centerBadge(desc, "D"),
     distanceLabel(gpc, desc, `${overlap.distance_mi} mi`),
   ];
   renderInspector(overlap);
@@ -163,11 +230,18 @@ function clearSelectedOverlap() {
   projectLayers.forEach((layer) => {
     if (!map.hasLayer(layer)) layer.addTo(map);
   });
+  substationLayers.forEach((layer) => {
+    if (!substationGroup.hasLayer(layer)) layer.addTo(substationGroup);
+  });
   overlapLayers.forEach((layer) => {
     layer.setStyle({ opacity: 0.75, weight: 3 });
     setLinePulse(layer, true);
     if (!overlapGroup.hasLayer(layer)) layer.addTo(overlapGroup);
   });
+  opportunityCapLayers.forEach((layer) => {
+    if (!opportunityCapGroup.hasLayer(layer)) layer.addTo(opportunityCapGroup);
+  });
+  applySubstationVisibility();
   document.querySelector("#inspector").innerHTML = `
     <h2>Selected opportunity</h2>
     <p>Click a ranked overlap to zoom in and show the 25 mile coordination radius.</p>
@@ -186,6 +260,13 @@ function updateOverlapVisibility() {
       overlapGroup.removeLayer(layer);
     }
   });
+  opportunityCapLayers.forEach((layer, id) => {
+    if (id === selectedOverlapId) {
+      if (!opportunityCapGroup.hasLayer(layer)) layer.addTo(opportunityCapGroup);
+    } else {
+      opportunityCapGroup.removeLayer(layer);
+    }
+  });
 }
 
 function setLinePulse(layer, isPulsing) {
@@ -202,6 +283,33 @@ function updateProjectVisibility(overlap) {
       map.removeLayer(layer);
     }
   });
+  applySubstationVisibility(involved);
+}
+
+function visibleOpportunityCapPoints() {
+  const visible = [];
+  opportunityCapPoints.forEach((points, id) => {
+    if (!selectedOverlapId || id === selectedOverlapId) visible.push(...points);
+  });
+  return visible;
+}
+
+function applySubstationVisibility(involvedProjectIds = null) {
+  const capPoints = visibleOpportunityCapPoints();
+  substationLayers.forEach((layer, key) => {
+    const group = substationGroups.get(key);
+    const involved = !involvedProjectIds || [...group.projectIds].some((projectId) => involvedProjectIds.has(projectId));
+    const coveredByCap = capPoints.some((point) => milesBetween(group.point, point) <= 0.12);
+    if (involved && !coveredByCap) {
+      if (!substationGroup.hasLayer(layer)) layer.addTo(substationGroup);
+    } else {
+      substationGroup.removeLayer(layer);
+    }
+  });
+}
+
+function nearbySubstationGroup(latlng) {
+  return [...substationGroups.values()].find((group) => milesBetween(group.point, latlng) <= 0.12);
 }
 
 function updateListVisibility() {
@@ -212,16 +320,26 @@ function updateListVisibility() {
   });
 }
 
-function centerBadge(latlng, text) {
+function opportunityCapForPoint(latlng, label, color, zIndexOffset = 650) {
+  const group = nearbySubstationGroup(latlng);
+  const utilities = group ? [...group.utilities] : [];
+  if (utilities.length > 1) {
+    return opportunityCap(latlng, label, colors.GPC, "shared", zIndexOffset, colors.DESC);
+  }
+  return opportunityCap(latlng, label, color, group ? "combined" : "plain", zIndexOffset);
+}
+
+function opportunityCap(latlng, label, color, variant, zIndexOffset = 650, secondColor = color) {
+  const className = `opportunity-cap ${variant}`;
   return L.marker(latlng, {
     icon: L.divIcon({
       className: "",
-      html: `<div class="center-badge">${text}</div>`,
-      iconSize: [30, 30],
-      iconAnchor: [15, 15],
+      html: `<div class="${className}" style="--cap-color:${color}; --cap-color-2:${secondColor}">${label}</div>`,
+      iconSize: [22, 22],
+      iconAnchor: [11, 11],
     }),
-    zIndexOffset: 900,
-  }).addTo(map);
+    zIndexOffset,
+  });
 }
 
 function distanceLabel(a, b, text) {
@@ -269,11 +387,14 @@ async function load() {
   if (!projectsRes.ok || !overlapsRes.ok) throw new Error("API request failed");
   const projects = await projectsRes.json();
   const overlaps = await overlapsRes.json();
+  buildSubstationGroups(projects);
   projects.forEach(addProject);
+  drawSubstations();
   overlaps.forEach((overlap) => {
     allOverlaps.set(overlap.overlap_id, overlap);
     addOverlap(overlap);
   });
+  applySubstationVisibility();
   renderList(overlaps);
   document.querySelector("#status").textContent = `${projects.length} projects and ${overlaps.length} overlaps loaded from the API.`;
 }

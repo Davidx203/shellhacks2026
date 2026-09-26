@@ -228,6 +228,33 @@ h2 {
   font-weight: 800;
 }
 
+.opportunity-cap {
+  display: grid;
+  width: 24px;
+  height: 24px;
+  place-items: center;
+  border: 3px solid #1f9d55;
+  border-radius: 50%;
+  box-shadow: 0 6px 15px rgba(23, 32, 38, 0.24);
+  font-size: 0.72rem;
+  font-weight: 800;
+}
+
+.opportunity-cap.plain {
+  background: #fff;
+  color: #1f9d55;
+}
+
+.opportunity-cap.combined {
+  background: var(--cap-color);
+  color: #fff;
+}
+
+.opportunity-cap.shared {
+  background: linear-gradient(90deg, var(--cap-color) 0 50%, var(--cap-color-2) 50% 100%);
+  color: #fff;
+}
+
 .distance-label {
   padding: 6px 8px;
   border: 1px solid rgba(31, 157, 85, 0.38);
@@ -238,6 +265,26 @@ h2 {
   font-size: 0.8rem;
   font-weight: 800;
   white-space: nowrap;
+}
+
+.substation-marker {
+  box-shadow: 0 6px 16px rgba(23, 32, 38, 0.26);
+}
+
+.substation-marker.normal {
+  width: 18px;
+  height: 18px;
+  border: 3px solid #fff;
+  border-radius: 50%;
+  background: var(--utility-color);
+}
+
+.substation-marker.shared {
+  width: 24px;
+  height: 24px;
+  border: 3px solid #fff;
+  border-radius: 50%;
+  background: linear-gradient(90deg, var(--utility-color) 0 50%, var(--utility-color-2) 50% 100%);
 }
 
 path.pulse-line {
