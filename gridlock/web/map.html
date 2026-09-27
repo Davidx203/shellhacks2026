@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Map | Gridlock Radar</title>
+    <link href="https://api.mapbox.com/mapbox-gl-js/v3.8.0/mapbox-gl.css" rel="stylesheet" />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="layout">
+      <aside class="sidebar">
+        <header>
+          <div class="account-bar">
+            <span id="signed-in-company"></span>
+            <button id="sign-out" type="button">Sign out</button>
+          </div>
+          <p class="eyebrow">Gridlock Radar</p>
+          <h1>Transmission overlap radar</h1>
+        </header>
+        <section class="legend">
+          <div><span class="key gpc"></span>Georgia Power</div>
+          <div><span class="key desc"></span>Dominion Energy SC</div>
+          <div><span class="line-key"></span>Coordination opportunity</div>
+        </section>
+        <section id="inspector" class="inspector">
+          <h2>Selected opportunity</h2>
+          <p>Click a ranked overlap to zoom in and show the 25 mile coordination radius.</p>
+        </section>
+        <section>
+          <div class="section-heading">
+            <h2>Filters</h2>
+            <span id="filter-count">0 shown</span>
+          </div>
+          <div class="filters">
+            <label>
+              <span>Search</span>
+              <input id="filter-search" type="search" placeholder="Project or overlap" />
+            </label>
+            <label>
+              <span>Max distance</span>
+              <select id="filter-distance">
+                <option value="">Any</option>
+                <option value="5">5 mi</option>
+                <option value="10">10 mi</option>
+                <option value="15">15 mi</option>
+                <option value="25">25 mi</option>
+              </select>
+            </label>
+            <label>
+              <span>Min score</span>
+              <select id="filter-score">
+                <option value="">Any</option>
+                <option value="0.8">0.80+</option>
+                <option value="0.6">0.60+</option>
+                <option value="0.4">0.40+</option>
+              </select>
+            </label>
+            <label class="check-row">
+              <input id="filter-voltage" type="checkbox" />
+              <span>Voltage match only</span>
+            </label>
+          </div>
+        </section>
+        <section>
+          <div class="section-heading">
+            <h2>Ranked overlaps</h2>
+            <div class="segmented" aria-label="How many overlaps to show">
+              <button type="button" data-top="all" class="active">All</button>
+              <button type="button" data-top="20">Top 20</button>
+            </div>
+          </div>
+          <ol id="overlaps" class="overlaps"></ol>
+        </section>
+      </aside>
+      <section class="map-area">
+        <div id="map"></div>
+        <div class="map-controls-stack">
+          <div id="camera-controls" class="camera-controls is-disabled" aria-label="Opportunity camera controls">
+            <button id="view-prev" type="button" title="Previous camera view">‹</button>
+            <button type="button" data-camera-view="gpc">G site</button>
+            <button type="button" data-camera-view="center">Center</button>
+            <button type="button" data-camera-view="desc">D site</button>
+            <button id="view-next" type="button" title="Next camera view">›</button>
+          </div>
+          <div class="zoom-control">
+            <span aria-hidden="true">−</span>
+            <input id="zoom-slider" type="range" min="4" max="18" step="0.05" value="7" aria-label="Zoom level" />
+            <span aria-hidden="true">+</span>
+          </div>
+          <button id="reset-view" class="reset-view" type="button">Reset view</button>
+        </div>
+        <div class="basemap-controls" aria-label="Map style">
+          <button type="button" data-basemap="satellite">Satellite</button>
+          <button type="button" data-basemap="streets">Map</button>
+        </div>
+        <div id="status" class="status">Loading project data...</div>
+      </section>
+    </main>
+    <script src="https://api.mapbox.com/mapbox-gl-js/v3.8.0/mapbox-gl.js"></script>
+    <script src="./auth.js"></script>
+    <script>
+      if (GridlockAuth.current()) {
+        const script = document.createElement("script");
+        script.src = "./main.js";
+        document.body.appendChild(script);
+      } else {
+        window.location.replace("./index.html");
+      }
+    </script>
+  </body>
+</html>
