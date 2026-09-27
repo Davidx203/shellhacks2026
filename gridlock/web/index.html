@@ -13,6 +13,7 @@
         <header>
           <p class="eyebrow">Gridlock Radar</p>
           <h1>Transmission overlap radar</h1>
+          <button id="open-submit" class="submit-open" type="button">Submit a project</button>
         </header>
         <section class="legend">
           <div><span class="key gpc"></span>Georgia Power</div>
@@ -93,7 +94,64 @@
         <div id="status" class="status">Loading fixture data...</div>
       </section>
     </main>
+    <dialog id="submit-dialog" class="submit-dialog" aria-labelledby="submit-title">
+      <div class="dialog-head">
+        <h2 id="submit-title">Submit a project</h2>
+        <button id="close-submit" class="dialog-close" type="button" aria-label="Close">&times;</button>
+      </div>
+      <div class="dialog-tabs" role="tablist">
+        <button type="button" data-tab="pdf" class="active">Upload PDF</button>
+        <button type="button" data-tab="form">Manual form</button>
+        <button type="button" data-tab="history">History</button>
+      </div>
+      <p id="submit-status" class="submit-status" role="status"></p>
+
+      <section data-panel="pdf">
+        <label>Company
+          <select id="pdf-utility"><option value="GPC">Georgia Power</option><option value="DESC">Dominion Energy SC</option></select>
+        </label>
+        <label>PDF in the Georgia Power IRP or Dominion project layout
+          <input id="pdf-file" type="file" accept="application/pdf" />
+        </label>
+        <label>Submitted by (optional)<input id="pdf-by" type="text" maxlength="80" /></label>
+        <button id="pdf-preview" type="button">Preview</button>
+        <div id="pdf-result"></div>
+      </section>
+
+      <section data-panel="form" hidden>
+        <form id="project-form" autocomplete="off">
+          <label>Company
+            <select name="utility"><option value="GPC">Georgia Power</option><option value="DESC">Dominion Energy SC</option></select>
+          </label>
+          <label>Utility project ID (optional)<input name="utility_project_id" type="text" /></label>
+          <label>Project name<input name="project_name" type="text" required /></label>
+          <label>Endpoint A (substation)<input name="endpoint_a" type="text" /></label>
+          <label>Endpoint B (optional)<input name="endpoint_b" type="text" /></label>
+          <label>Voltage (kV)<input name="voltage_kv" type="text" inputmode="numeric" /></label>
+          <label>Length (miles)<input name="length_mi" type="text" inputmode="decimal" /></label>
+          <label>Estimated cost (USD)<input name="est_cost_usd" type="text" inputmode="numeric" /></label>
+          <label>Build start (optional)<input name="build_start" type="date" /></label>
+          <label>In-service date<input name="in_service_date" type="date" required /></label>
+          <fieldset><legend>Optional coordinates (latitude, then longitude)</legend>
+            <label>A latitude<input name="lat_a" type="text" inputmode="decimal" /></label>
+            <label>A longitude<input name="lon_a" type="text" inputmode="decimal" /></label>
+            <label>B latitude<input name="lat_b" type="text" inputmode="decimal" /></label>
+            <label>B longitude<input name="lon_b" type="text" inputmode="decimal" /></label>
+          </fieldset>
+          <label>Submitted by (optional)<input name="submitted_by" type="text" maxlength="80" /></label>
+          <button id="form-preview" type="submit">Preview</button>
+        </form>
+        <div id="form-result"></div>
+      </section>
+
+      <section data-panel="history" hidden>
+        <div id="history-list"></div>
+      </section>
+    </dialog>
+
     <script src="https://api.mapbox.com/mapbox-gl-js/v3.8.0/mapbox-gl.js"></script>
     <script src="./main.js"></script>
+    <script src="./submit-helpers.js"></script>
+    <script src="./submit.js"></script>
   </body>
 </html>

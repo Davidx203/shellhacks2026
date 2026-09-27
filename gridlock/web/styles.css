@@ -657,3 +657,46 @@ path.pulse-line {
   color: var(--overlap);
   outline: none;
 }
+
+.submit-open {
+  margin-top: 10px;
+  padding: 9px 14px;
+  border: 1px solid var(--overlap);
+  border-radius: 8px;
+  background: var(--overlap);
+  color: #fff;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.submit-dialog {
+  width: min(760px, calc(100vw - 32px));
+  max-height: calc(100vh - 48px);
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  overflow: auto;
+}
+
+.submit-dialog::backdrop { background: rgba(23, 32, 38, 0.45); }
+.submit-dialog section, .submit-dialog .dialog-head, .submit-dialog .dialog-tabs, .submit-status { padding: 12px 20px; }
+.dialog-head { display: flex; justify-content: space-between; align-items: center; }
+.dialog-head h2 { margin: 0; }
+.dialog-close { border: 0; background: transparent; font-size: 1.6rem; cursor: pointer; }
+.dialog-tabs { display: flex; gap: 8px; border-bottom: 1px solid var(--line); }
+.dialog-tabs button { padding: 8px 12px; border: 1px solid var(--line); border-radius: 8px; background: #fff; font-weight: 800; cursor: pointer; }
+.dialog-tabs button.active { background: #effaf4; color: var(--overlap); border-color: var(--overlap); }
+.submit-dialog label { display: block; margin: 8px 0; font-size: 0.85rem; font-weight: 700; }
+.submit-dialog input, .submit-dialog select { display: block; width: 100%; margin-top: 4px; padding: 8px; box-sizing: border-box; }
+.submit-dialog fieldset { margin: 10px 0; border: 1px solid var(--line); border-radius: 8px; }
+.submit-status { min-height: 1.2em; margin: 0; color: var(--muted); font-weight: 700; }
+.submit-status.error { color: #b3261e; }
+.submit-table { width: 100%; border-collapse: collapse; margin: 12px 0; font-size: 0.82rem; }
+.submit-table th, .submit-table td { padding: 6px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+.badge { display: inline-block; padding: 2px 8px; border-radius: 999px; font-weight: 800; font-size: 0.72rem; }
+.badge-new { background: #e6f6ec; color: #17603a; }
+.badge-update { background: #fff4d6; color: #7a5600; }
+.badge-muted { background: #eef1f3; color: #4f616c; }
+.badge-invalid { background: #fde7e5; color: #b3261e; }
+.row-errors { color: #b3261e; }
+.submit-dialog button.primary { margin-top: 8px; padding: 9px 14px; border: 0; border-radius: 8px; background: var(--overlap); color: #fff; font-weight: 800; cursor: pointer; }

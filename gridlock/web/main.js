@@ -317,6 +317,7 @@ function projectLineFeatures() {
         type: "Feature",
         properties: {
           route_mi: route ? route.route_mi : "",
+          origin: project.origin || "report",
           project_id: project.project_id,
           project_name: project.project_name,
           utility: project.utility,
@@ -415,6 +416,15 @@ function addMapSourcesAndLayers() {
     },
   });
 
+  map.addLayer({
+    id: "project-lines-submitted",
+    type: "line",
+    source: "project-lines",
+    filter: ["!=", ["get", "origin"], "report"],
+    layout: { "line-cap": "butt", "line-join": "round" },
+    paint: { "line-color": "#ffffff", "line-width": 2, "line-dasharray": [1.5, 1.5], "line-opacity": 0.95 },
+  });
+
   map.addSource("overlap-lines", {
     type: "geojson",
     data: {
@@ -470,6 +480,7 @@ function bindMapLayerEvents() {
         In service: ${props.in_service_date}<br>
         Confidence: ${props.confidence_tier}<br>
         ${props.route_mi ? `Route along power line: ${props.route_mi} mi<br>` : ""}
+        ${props.origin && props.origin !== "report" ? "<em>Submitted by the company \u00b7 unverified</em><br>" : ""}
         Source: ${props.source_ref}
       `)
       .addTo(map);
@@ -771,21 +782,29 @@ function updateOverlapVisibility() {
   });
 }
 
+function setProjectFilter(filter) {
+  map.setFilter("project-lines", filter);
+  if (map.getLayer("project-lines-submitted")) {
+    const submitted = ["!=", ["get", "origin"], "report"];
+    map.setFilter("project-lines-submitted", filter ? ["all", submitted, filter] : submitted);
+  }
+}
+
 function updateProjectVisibility(overlap) {
   if (!map.getLayer("project-lines")) return;
   if (!overlap) {
     if (filtersActive()) {
       const ids = shownProjectIds();
-      map.setFilter("project-lines", matchFilter("project_id", [...ids]));
+      setProjectFilter(matchFilter("project_id", [...ids]));
       applySubstationVisibility(ids);
     } else {
-      map.setFilter("project-lines", null);
+      setProjectFilter(null);
       applySubstationVisibility();
     }
     return;
   }
   const ids = [overlap.project_id_gpc, overlap.project_id_desc];
-  map.setFilter("project-lines", ["match", ["get", "project_id"], ids, true, false]);
+  setProjectFilter(["match", ["get", "project_id"], ids, true, false]);
   applySubstationVisibility(new Set(ids));
 }
 
