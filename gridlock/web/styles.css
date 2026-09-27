@@ -762,11 +762,17 @@ path.pulse-line {
 .cost-inputs {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
+  grid-template-rows: auto auto;
+  grid-auto-flow: column;
+  align-items: start;
+  gap: 4px 8px;
 }
 
 .cost-inputs label {
-  display: block;
+  display: contents;
+}
+
+.cost-inputs label span {
   color: var(--muted);
   font-size: 0.72rem;
   font-weight: 800;
@@ -778,7 +784,6 @@ path.pulse-line {
   display: block;
   width: 100%;
   height: 36px;
-  margin-top: 4px;
   padding: 0 9px;
   border: 1px solid var(--line);
   border-radius: 8px;
