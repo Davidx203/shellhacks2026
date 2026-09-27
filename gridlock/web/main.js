@@ -35,6 +35,7 @@ const substationMarkers = new Map();
 const opportunityCaps = new Map();
 const opportunityCapPoints = new Map();
 const overlapsById = new Map();
+let costBriefRequestId = 0;
 const routesByProject = new Map();
 
 const emptyFeatureCollection = {
@@ -246,6 +247,21 @@ function escapeHtml(value) {
 
 function namesHtml(group) {
   return group.names.map(escapeHtml).join("<br>");
+}
+
+function formatUsd(amount) {
+  const number = Number(amount);
+  return `$${Number.isFinite(number) ? Math.round(number).toLocaleString("en-US") : 0}`;
+}
+
+function costBriefQuery(sharedMi, costPerAcre) {
+  const params = new URLSearchParams();
+  const mi = Number(sharedMi);
+  const cost = Number(costPerAcre);
+  if (sharedMi !== "" && Number.isFinite(mi) && mi > 0) params.set("shared_mi", String(mi));
+  if (costPerAcre !== "" && Number.isFinite(cost) && cost > 0) params.set("cost_per_acre", String(cost));
+  const query = params.toString();
+  return query ? `?${query}` : "";
 }
 
 function setStatus(message) {
@@ -720,6 +736,7 @@ function selectOverlap(overlap) {
   updateSelectionCircles([gpc, desc]);
   updateDistanceLabel(gpc, desc, isTouching(overlap) ? "touching" : `${overlap.distance_mi} mi`);
   renderInspector(overlap);
+  renderCostBrief(overlap);
   setCameraControlsEnabled(true);
   setCameraView("center");
 }
@@ -738,6 +755,8 @@ function clearSelectedOverlap() {
     <h2>Selected opportunity</h2>
     <p>Click a ranked overlap to zoom in and show the 25 mile coordination radius.</p>
   `;
+  costBriefRequestId += 1;
+  document.querySelector("#cost-brief").hidden = true;
 }
 
 function stepCamera(direction) {
@@ -982,6 +1001,56 @@ function renderInspector(overlap) {
   `;
 }
 
+async function renderCostBrief(overlap) {
+  const section = document.querySelector("#cost-brief");
+  const narrativeEl = document.querySelector("#cost-narrative");
+  const resultEl = document.querySelector("#cost-result");
+  const assumptionsEl = document.querySelector("#cost-assumptions");
+  section.hidden = false;
+  narrativeEl.textContent = "Estimating shared right-of-way savings\u2026";
+  resultEl.innerHTML = "";
+  assumptionsEl.textContent = "";
+
+  const requestId = ++costBriefRequestId;
+  const query = costBriefQuery(
+    document.querySelector("#cost-shared-mi").value,
+    document.querySelector("#cost-per-acre").value,
+  );
+  let brief;
+  try {
+    const [briefRes, narrativeRes] = await Promise.all([
+      fetch(`${API}/briefs/${overlap.overlap_id}${query}`),
+      fetch(`${API}/briefs/${overlap.overlap_id}/narrative${query}`, { method: "POST" }),
+    ]);
+    if (!briefRes.ok) throw new Error("brief request failed");
+    brief = await briefRes.json();
+    const narrative = narrativeRes.ok ? (await narrativeRes.json()).narrative : "";
+    if (requestId !== costBriefRequestId) return;
+    narrativeEl.textContent = narrative || "Estimate unavailable for this opportunity.";
+  } catch {
+    if (requestId !== costBriefRequestId) return;
+    narrativeEl.textContent = "Could not load a cost estimate for this opportunity.";
+    return;
+  }
+  if (requestId !== costBriefRequestId) return;
+  resultEl.innerHTML = `
+    <div class="metric"><span>Shared corridor</span><b>${escapeHtml(brief.shared_corridor_mi)} mi</b></div>
+    <div class="metric"><span>Right-of-way width</span><b>${escapeHtml(brief.row_width_ft)} ft</b></div>
+    <div class="metric"><span>Shared land</span><b>${escapeHtml(brief.shared_acres)} acres</b></div>
+    <div class="metric"><span>Est. land savings</span><b>${escapeHtml(formatUsd(brief.est_land_savings_usd))}</b></div>
+  `;
+  assumptionsEl.textContent = brief.assumptions_note || "";
+}
+
+function initCostInputs() {
+  ["#cost-shared-mi", "#cost-per-acre"].forEach((selector) => {
+    document.querySelector(selector).addEventListener("change", () => {
+      const overlap = selectedOverlapId ? overlapsById.get(selectedOverlapId) : null;
+      if (overlap) renderCostBrief(overlap);
+    });
+  });
+}
+
 async function load() {
   setStatus("Loading fixture data...");
   const [projectsRes, overlapsRes] = await Promise.all([
@@ -1018,4 +1087,5 @@ async function load() {
 initListFilters();
 initCameraControls();
 initBasemapControls();
+initCostInputs();
 initMap();

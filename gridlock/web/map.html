@@ -29,6 +29,20 @@
           <h2>Selected opportunity</h2>
           <p>Click a ranked overlap to zoom in and show the 25 mile coordination radius.</p>
         </section>
+        <section id="cost-brief" class="cost-brief" hidden>
+          <h2>Cost &amp; land-savings impact</h2>
+          <p id="cost-narrative" class="cost-narrative"></p>
+          <div class="cost-inputs">
+            <label>Shared corridor (mi)
+              <input id="cost-shared-mi" type="number" min="0" step="0.1" placeholder="auto" />
+            </label>
+            <label>Land cost ($/acre)
+              <input id="cost-per-acre" type="number" min="0" step="500" placeholder="auto" />
+            </label>
+          </div>
+          <div id="cost-result" class="inspector-grid"></div>
+          <p id="cost-assumptions" class="cost-assumptions"></p>
+        </section>
         <section>
           <div class="section-heading">
             <h2>Filters</h2>

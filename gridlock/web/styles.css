@@ -733,3 +733,57 @@ path.pulse-line {
 .badge-invalid { background: #fde7e5; color: #b3261e; }
 .row-errors { color: #b3261e; }
 .submit-dialog button.primary { margin-top: 8px; padding: 9px 14px; border: 0; border-radius: 8px; background: var(--overlap); color: #fff; font-weight: 800; cursor: pointer; }
+
+.cost-brief {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #f7fbf8;
+  box-shadow: 0 10px 24px rgba(23, 32, 38, 0.06);
+}
+
+.cost-brief h2 {
+  margin-bottom: 0;
+}
+
+.cost-narrative {
+  margin: 0;
+  color: var(--ink);
+  font-size: 0.9rem;
+  line-height: 1.42;
+}
+
+.cost-inputs {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.cost-inputs label {
+  display: block;
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.cost-inputs input {
+  display: block;
+  width: 100%;
+  margin-top: 4px;
+  padding: 7px 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  box-sizing: border-box;
+  font: inherit;
+}
+
+.cost-assumptions {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.76rem;
+  line-height: 1.4;
+}
