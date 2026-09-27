@@ -256,3 +256,17 @@ def test_a_stale_preview_cannot_fuse_two_projects_under_one_id(client):
     stale = client.post("/submissions/commit", json={"utility": "GPC", "origin": "form", "submitted_by": "", "rows": [second["row"]], "expected": {"GPC_SUB1": "new"}})
     assert stale.status_code == 422 and "changed since your preview" in stale.json()["detail"]["skipped"][0]["reason"]
     assert [h["project_name"] for h in client.get("/submissions").json()] == ["First - One 115kV: Rebuild"]
+
+
+def test_a_partial_form_update_changes_only_what_was_filled_in_and_previews_the_real_name(client, tmp_path):
+    write_current(tmp_path / "projects_report.csv")
+    entry = client.post("/submissions/preview/form", json={"utility": "DESC", "utility_project_id": "6810O", "est_cost_usd": "4,000,000"}).json()["rows"][0]
+    assert entry["errors"] == [] and entry["status"] == "update"
+    assert entry["changes"] == {"est_cost_usd": ["3000000", "4000000"]}
+    assert entry["summary"]["project_name"] == "Urquhart - Aiken PSA 46 kV: Rebuild"
+    assert entry["summary"]["in_service_date"] == "2027-12-31" and entry["row"]["in_service_date"] == ""
+
+
+def test_every_preview_entry_carries_a_summary_for_the_table(client):
+    entry = client.post("/submissions/preview/form", json=FORM).json()["rows"][0]
+    assert entry["summary"]["project_id"] == "GPC_SUB1" and entry["summary"]["project_name"].startswith("Okatie")

@@ -41,9 +41,15 @@ def _current_by_id() -> dict[str, dict]:
     return current_by_id(_baseline_rows(), SUBMISSIONS_PATH)
 
 
+SUMMARY_FIELDS = ("project_id", "project_name", "endpoint_a", "endpoint_b", "in_service_date")
+
+
 def _entry(row: dict, errors: list[str], current: dict) -> dict:
     info = {"status": "invalid", "changes": {}} if errors else diff(row, current)
-    return {"row": row, "status": info["status"], "changes": info["changes"], "errors": errors}
+    filled = {key: value for key, value in row.items() if value not in ("", None)}
+    merged = {**current.get(row.get("project_id"), {}), **filled}       # what the table should show
+    return {"row": row, "status": info["status"], "changes": info["changes"], "errors": errors,
+            "summary": {key: merged.get(key, "") for key in SUMMARY_FIELDS}}
 
 
 @router.post("/preview/pdf")
@@ -69,7 +75,7 @@ async def preview_pdf(utility: str = Form(...), file: UploadFile = File(...)) ->
 @router.post("/preview/form")
 def preview_form(payload: dict) -> dict:
     current = _current_by_id()
-    row, errors = prepare_form(payload, taken_ids=reserved_ids(_baseline_rows(), SUBMISSIONS_PATH))
+    row, errors = prepare_form(payload, taken_ids=reserved_ids(_baseline_rows(), SUBMISSIONS_PATH), current_by_id=current)
     if not row:
         raise HTTPException(status_code=422, detail="; ".join(errors))
     return {"utility": row["utility"], "origin": "form", "rows": [_entry(row, errors, current)]}

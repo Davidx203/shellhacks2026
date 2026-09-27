@@ -105,8 +105,12 @@ def _generated_id(utility, taken_ids):
     return f"{utility}_SUB{n}"
 
 
-def prepare_form(payload, taken_ids=()):
-    """Turn form input into a contract row. Returns (row, errors); the row is {} when the utility is invalid."""
+def prepare_form(payload, taken_ids=(), current_by_id=None):
+    """Turn form input into a contract row. Returns (row, errors); the row is {} when the utility is invalid.
+
+    For a project_id that already exists, blank fields mean "keep what is there": nothing is derived or
+    defaulted, and the merged result (existing values plus what was filled in) is what gets validated.
+    """
     errors = []
     utility = _text(payload.get("utility")).upper()
     if utility not in STATE:
@@ -125,17 +129,24 @@ def prepare_form(payload, taken_ids=()):
         errors.append(f"utility_project_id: {raw_id!r} may only contain letters, digits and . , _ -")
         raw_id = ""
     project_id = f"{utility}_{raw_id}" if raw_id else _generated_id(utility, taken_ids)
+    current = (current_by_id or {}).get(project_id)
+    updating = current is not None
+    if updating:
+        a_name, b_name = _text(payload.get("endpoint_a")), _text(payload.get("endpoint_b"))   # never derived on an update
 
     in_service = _date_field(payload, "in_service_date", errors)
     start = _date_field(payload, "build_start", errors)
     if start and in_service and start > in_service:
         errors.append("build_start: is after in_service_date")
-    default_start = f"{in_service[:4]}-01-01" if in_service else ""
-    build_start, build_end = clamp_window(start or default_start, in_service)
+    if updating:
+        build_start, build_end = start, in_service        # the real start stays unless the submitter gave one
+    else:
+        default_start = f"{in_service[:4]}-01-01" if in_service else ""
+        build_start, build_end = clamp_window(start or default_start, in_service)
     if _text(payload.get("voltage_kv")):
         voltage = _voltage_field(payload, errors)
     else:
-        voltage = str(max_kv(name)) if max_kv(name) else ""
+        voltage = "" if updating else (str(max_kv(name)) if max_kv(name) else "")
 
     row = dict.fromkeys(ROW_KEYS, "")
     row.update(
@@ -148,8 +159,15 @@ def prepare_form(payload, taken_ids=()):
         given_lat_a=_coordinate_field(payload, "lat_a", errors), given_lon_a=_coordinate_field(payload, "lon_a", errors),
         given_lat_b=_coordinate_field(payload, "lat_b", errors), given_lon_b=_coordinate_field(payload, "lon_b", errors),
     )
-    finalize_row(row)
-    errors += validate_submission(row)
+    if not updating or name:
+        finalize_row(row)
+    if updating:
+        merged = {**current, **{key: value for key, value in row.items() if value != ""}}
+        if merged.get("build_start") and merged.get("build_end") and merged["build_start"] > merged["build_end"]:
+            errors.append("build_start: would be after in_service_date; give a build start as well")
+        errors += [e for e in validate_submission(merged) if not e.startswith("build_start after build_end")]
+    else:
+        errors += validate_submission(row)
     return row, list(dict.fromkeys(errors))
 
 

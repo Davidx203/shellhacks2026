@@ -333,3 +333,50 @@ def test_concurrent_identical_commits_save_exactly_one_revision(tmp_path):
     [t.start() for t in threads]
     [t.join() for t in threads]
     assert sorted(saved) == [0] * 7 + [1] and len(read_submissions(path)) == 1
+
+
+# ---- review fixes: updates change only what the submitter filled in --------------------------
+
+def existing_project(**over):
+    return report(project_id="GPC_20277", utility="GPC", state="GA", project_name="McIntosh - Purrysburg 230kV Rebuild",
+                  endpoint_a="McIntosh", endpoint_b="Purrysburg", voltage_kv="230", est_cost_usd="1000000",
+                  in_service_date="2026-06-01", build_start="2024-03-15", build_end="2026-06-01", project_type="rebuild",
+                  given_lat_a="32.35", given_lon_a="-81.17", **over)
+
+
+def update_payload(**over):
+    return {"utility": "GPC", "utility_project_id": "20277", **over}
+
+
+def test_updating_only_the_cost_changes_only_the_cost():
+    current = {"GPC_20277": existing_project()}
+    row, errors = prepare_form(update_payload(est_cost_usd="$4,000,000"), current_by_id=current)
+    assert errors == []
+    for field in ("project_name", "endpoint_a", "endpoint_b", "voltage_kv", "project_type", "in_service_date", "build_start", "build_end"):
+        assert row[field] == "", field
+    assert diff(row, current) == {"status": "update", "changes": {"est_cost_usd": ["1000000", "4000000"]}}
+    merged = merge_rows([existing_project()], [{**dict.fromkeys(store.SUBMISSION_COLUMNS, ""), **row, "submission_id": "s", "submitted_at": "t", "status": "active", "origin": "form"}])[0]
+    assert (merged["build_start"], merged["endpoint_a"], merged["given_lat_a"]) == ("2024-03-15", "McIntosh", "32.35")
+
+
+def test_updating_the_in_service_date_keeps_the_real_build_start():
+    current = {"GPC_20277": existing_project()}
+    row, errors = prepare_form(update_payload(in_service_date="2027-01-31"), current_by_id=current)
+    assert errors == [] and row["build_start"] == "" and (row["in_service_date"], row["build_end"]) == ("2027-01-31", "2027-01-31")
+
+
+def test_an_update_that_would_put_the_start_after_the_end_is_rejected():
+    current = {"GPC_20277": existing_project()}
+    row, errors = prepare_form(update_payload(in_service_date="2023-06-01"), current_by_id=current)     # before the 2024-03-15 start
+    assert any("build_start" in e for e in errors), errors
+
+
+def test_a_new_name_on_an_update_reclassifies_but_does_not_rederive_endpoints():
+    current = {"GPC_20277": existing_project()}
+    row, errors = prepare_form(update_payload(project_name="McIntosh - Purrysburg 230kV RELAY MODERNIZATION"), current_by_id=current)
+    assert errors == [] and row["project_type"] == "relay" and row["endpoint_a"] == "" and row["voltage_kv"] == ""
+
+
+def test_a_project_id_that_does_not_exist_is_still_a_full_new_project():
+    row, errors = prepare_form(update_payload(utility_project_id="99999"), current_by_id={"GPC_20277": existing_project()})
+    assert any("project_name" in e or "in_service_date" in e for e in errors)     # new projects still need their required fields
