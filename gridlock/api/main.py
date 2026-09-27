@@ -10,6 +10,8 @@ from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
+from api.submissions import router as submissions_router
+
 ROOT = Path(__file__).resolve().parents[1]
 DB_PATH = ROOT / "gridlock.db"
 MANUAL_FIXES = ROOT / "data" / "processed" / "manual_fixes.csv"
@@ -22,6 +24,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.include_router(submissions_router)
 
 
 class ProjectPatch(BaseModel):
