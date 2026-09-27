@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 
 from overlap import band_for, find_overlaps
-from rank import rank_overlaps, score_overlap, time_score
+from rank import distance_score, effective_confidence, rank_overlaps, score_overlap, time_score
 from timeline import window_relation
 
 
@@ -36,13 +36,14 @@ def test_all_six_fixture_pairs(projects):
 def test_scoring_formula_and_rank_order(projects):
     pairs = rank_overlaps(projects)
     assert [(p["project_id_gpc"], p["project_id_desc"]) for p in pairs] == [
-        ("GPC_2", "DESC_3"), ("GPC_1", "DESC_2"), ("GPC_3", "DESC_3"),
+        ("GPC_2", "DESC_3"), ("GPC_3", "DESC_3"), ("GPC_1", "DESC_2"),
         ("GPC_1", "DESC_1"), ("GPC_2", "DESC_5"), ("GPC_3", "DESC_5"),
     ]
     assert [(p["overlap_id"], p["rank"]) for p in pairs] == [(f"OVL_{i}", i) for i in range(1, 7)]
     lookup = {p["project_id"]: p for p in projects}
     first = pairs[0]
-    expected = (0.60 * (1 - 5.65 / 25) + 0.35 * time_score(first) + 0.05) * 1.0
+    confidence = min(effective_confidence(lookup[first["project_id_gpc"]]), effective_confidence(lookup[first["project_id_desc"]]))
+    expected = (0.60 * (1 - 5.65 / 25) ** 0.7 + 0.35 * time_score(first) + 0.05) * (0.75 + 0.25 * confidence)
     assert score_overlap(first, lookup) == pytest.approx(expected)
 
 
@@ -105,3 +106,18 @@ def test_distance_is_the_primary_signal_in_the_ranking():
     assert len(pairs) == 2
     assert pairs[0]["project_id_gpc"] == "G1"
     assert pairs[1]["windows_overlap"] and not pairs[0]["windows_overlap"]
+
+
+def test_distance_score_is_concave_and_bounded():
+    assert distance_score(0) == 1.0 and distance_score(25) == 0.0 and distance_score(30) == 0.0
+    assert distance_score(3) > 1 - 3 / 25 and distance_score(12.5) > 0.5
+    assert distance_score(1) > distance_score(5) > distance_score(20)
+
+
+def test_partial_location_is_not_treated_as_a_failed_match():
+    both = {"confidence": "0.9", "endpoint_b": "B", "lat_a": "1", "lat_b": "2"}
+    one_of_two = {"confidence": "0.425", "endpoint_b": "B", "lat_a": "1", "lat_b": ""}   # (0.85 + 0) / 2
+    single_site = {"confidence": "0.85", "endpoint_b": "", "lat_a": "1", "lat_b": ""}
+    assert effective_confidence(both) == pytest.approx(0.9)
+    assert effective_confidence(one_of_two) == pytest.approx(0.85 * 0.85)
+    assert effective_confidence(single_site) == pytest.approx(0.85)

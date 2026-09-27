@@ -14,6 +14,28 @@ VOLTAGE_WEIGHT = 0.05
 MAX_DISTANCE_MI = 25.0
 OVERLAP_BASE = 0.7
 WINDOW_FADE_DAYS = 1095
+DISTANCE_CURVE = 0.7
+CONFIDENCE_FLOOR = 0.75
+PARTIAL_LOCATION_FACTOR = 0.85
+
+
+def distance_score(distance_mi):
+    """Concave: nearness is rewarded more than a straight line would (3 mi ~0.91, 12.5 mi ~0.62, 25 mi 0)."""
+    return max(0.0, 1 - distance_mi / MAX_DISTANCE_MI) ** DISTANCE_CURVE
+
+
+def effective_confidence(project):
+    """How far to trust a project's location for ranking.
+
+    A two-endpoint project with only one endpoint located is not penalised as if the missing
+    endpoint were a failed match (it averages in a 0); we score the located end and take a fixed discount.
+    """
+    confidence = float(project["confidence"])
+    required = 2 if project.get("endpoint_b") else 1
+    located = sum(1 for key in ("lat_a", "lat_b") if project.get(key) not in ("", None))
+    if 0 < located < required:
+        return min(1.0, confidence * required / located) * PARTIAL_LOCATION_FACTOR
+    return confidence
 
 
 def time_score(overlap):
@@ -32,14 +54,13 @@ def score_overlap(overlap, projects_by_id):
     """Apply the team scoring formula to one overlap."""
     gpc = projects_by_id[overlap["project_id_gpc"]]
     desc = projects_by_id[overlap["project_id_desc"]]
-    distance_score = max(0.0, 1 - overlap["distance_mi"] / MAX_DISTANCE_MI)
     voltage_score = 1.0 if overlap["voltage_match"] else 0.0
-    confidence = min(float(gpc["confidence"]), float(desc["confidence"]))
+    confidence = min(effective_confidence(gpc), effective_confidence(desc))
     return (
-        DISTANCE_WEIGHT * distance_score
+        DISTANCE_WEIGHT * distance_score(overlap["distance_mi"])
         + TIME_WEIGHT * time_score(overlap)
         + VOLTAGE_WEIGHT * voltage_score
-    ) * (0.5 + 0.5 * confidence)
+    ) * (CONFIDENCE_FLOOR + (1 - CONFIDENCE_FLOOR) * confidence)
 
 
 def rank_overlaps(projects, routes=None):
