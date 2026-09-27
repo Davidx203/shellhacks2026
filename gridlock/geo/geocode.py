@@ -35,10 +35,19 @@ def border_distance_mi(lat: float, lon: float) -> float:
     return best
 
 
+ABBREVIATIONS = {"ST": "SAINT", "FT": "FORT", "MT": "MOUNT"}
+GENERIC_TOKENS = {"NORTH", "SOUTH", "EAST", "WEST", "CENTER", "CENTRAL", "PRIMARY", "INDUSTRIAL", "PARK", "COUNTY", "CREEK"}
+RELAXED_SCORE = 72
+
+
 def normalize_name(value: str) -> str:
     value = re.sub(r"\([^)]*\)|#\s*\d+", " ", value.upper())
     value = re.sub(r"\b(?:SUBSTATION|SUB|PRIMARY|SAV)\b", " ", value)
-    return " ".join(re.findall(r"[A-Z0-9]+", value))
+    return " ".join(ABBREVIATIONS.get(token, token) for token in re.findall(r"[A-Z0-9]+", value))
+
+
+def _distinctive(tokens: set[str]) -> bool:
+    return any(len(token) >= 5 and token not in GENERIC_TOKENS for token in tokens)
 
 
 def _inside_ring(lon: float, lat: float, ring: list) -> bool:
@@ -120,12 +129,12 @@ def fetch_substations(cache: Path = CACHE) -> list[dict]:
     return _annotate_states(features, cache)
 
 
-def match_endpoint(name: str, features: list[dict], expected_state: str, utility: str) -> dict | None:
+def candidate_matches(name: str, features: list[dict], expected_state: str, utility: str, limit: int = 6) -> list[dict]:
+    """Best-scoring OSM substations for a name, highest score first."""
     normalized = normalize_name(name)
     if not normalized:
-        return None
-    best = None
-    best_score = -1
+        return []
+    found = []
     for feature in features:
         props = feature["properties"]
         if props.get("gridlock_state") != expected_state:
@@ -141,20 +150,101 @@ def match_endpoint(name: str, features: list[dict], expected_state: str, utility
         # NORTH versus NORTH DUBLIN. Require the whole names to resemble each other.
         if fuzz.ratio(normalized, candidate) < 65:
             continue
-        if score > best_score:
-            best, best_score = feature, score
-    if best_score < MIN_NAME_SCORE:
-        return None
-    return {"feature": best, "name_score": best_score}
+        if score >= MIN_NAME_SCORE:
+            found.append({"feature": feature, "name_score": score})
+    if not found:
+        found = _relaxed_matches(normalized, features, expected_state, utility)
+    found.sort(key=lambda item: -item["name_score"])
+    return found[:limit]
+
+
+def _relaxed_matches(normalized: str, features: list[dict], expected_state: str, utility: str) -> list[dict]:
+    """Second pass: one name's words are all contained in the other (SALUDA vs SALUDA COUNTY).
+
+    Scored below every strict match, and only on a distinctive shared word so that
+    generic names such as NORTH cannot match NORTH DUBLIN.
+    """
+    query = set(normalized.split())
+    found = []
+    for feature in features:
+        props = feature["properties"]
+        if props.get("gridlock_state") != expected_state:
+            continue
+        candidate = set(normalize_name(props.get("name", "")).split())
+        if not candidate or not (query <= candidate or candidate <= query):
+            continue
+        if _distinctive(query & candidate):
+            found.append({"feature": feature, "name_score": RELAXED_SCORE, "relaxed": True})
+    return found
+
+
+def match_endpoint(name: str, features: list[dict], expected_state: str, utility: str) -> dict | None:
+    found = candidate_matches(name, features, expected_state, utility, limit=1)
+    return found[0] if found else None
+
+
+MAX_LINE_MI_BY_KV = {46: 40, 69: 50, 115: 60, 138: 70, 230: 90, 500: 150}
+SAVANNAH = (32.08, -81.09)
+AREA_HINTS = {"SAV:": (SAVANNAH, 70)}
+
+
+def max_plausible_miles(project: dict) -> float:
+    """Longest straight-line separation we accept between a line's two endpoints."""
+    if project.get("length_mi"):
+        stated = float(project["length_mi"])
+        return max(stated * 3, stated + 10)
+    kv = int(project["voltage_kv"]) if str(project.get("voltage_kv") or "").isdigit() else 0
+    return MAX_LINE_MI_BY_KV.get(kv, 100)
+
+
+def _in_hint_area(project: dict, candidates: list[dict]) -> list[dict]:
+    """Keep candidates near the area named by a project prefix (SAV: = Savannah); no-op if none qualify."""
+    for prefix, ((lat, lon), radius) in AREA_HINTS.items():
+        if project["project_name"].upper().startswith(prefix):
+            near = [c for c in candidates
+                    if haversine_miles(lat, lon, c["feature"]["geometry"]["coordinates"][1],
+                                       c["feature"]["geometry"]["coordinates"][0]) <= radius]
+            return near or candidates
+    return candidates
+
+
+def choose_pair(project: dict, cands_a: list[dict], cands_b: list[dict]) -> tuple[dict | None, dict | None]:
+    """Pick the endpoint pair that forms a plausible line; fall back to the best names."""
+    limit = max_plausible_miles(project)
+    best = None
+    for a in cands_a:
+        for b in cands_b:
+            if a["feature"] is b["feature"]:
+                continue
+            (lon_a, lat_a), (lon_b, lat_b) = a["feature"]["geometry"]["coordinates"], b["feature"]["geometry"]["coordinates"]
+            sep = haversine_miles(lat_a, lon_a, lat_b, lon_b)
+            plausible = sep <= limit
+            key = (plausible, a["name_score"] + b["name_score"], -sep)
+            if best is None or key > best[0]:
+                best = (key, a, b)
+    if best is None:
+        return (cands_a[0] if cands_a else None), (cands_b[0] if cands_b else None)
+    return best[1], best[2]
 
 
 def geocode_project(project: dict, features: list[dict]) -> tuple[dict, dict]:
     result = dict(project)
-    matches = {}
+    cands = {}
     for suffix in ("a", "b"):
         name = project.get(f"endpoint_{suffix}", "")
-        match = match_endpoint(name, features, project["state"], project["utility"]) if name else None
-        matches[suffix] = match
+        found = candidate_matches(name, features, project["state"], project["utility"]) if name else []
+        cands[suffix] = _in_hint_area(project, found)
+    both = bool(cands["a"] and cands["b"])
+    for suffix in ("a", "b"):
+        # An ambiguous relaxed match is only usable when the other endpoint can disambiguate it.
+        if not both and len(cands[suffix]) > 1 and cands[suffix][0].get("relaxed"):
+            cands[suffix] = []
+    if cands["a"] and cands["b"]:
+        matches = dict(zip(("a", "b"), choose_pair(project, cands["a"], cands["b"])))
+    else:
+        matches = {s: (cands[s][0] if cands[s] else None) for s in ("a", "b")}
+    for suffix in ("a", "b"):
+        match = matches[suffix]
         coords = match["feature"]["geometry"]["coordinates"] if match else None
         result[f"lat_{suffix}"] = coords[1] if coords else ""
         result[f"lon_{suffix}"] = coords[0] if coords else ""

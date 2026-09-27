@@ -60,6 +60,7 @@ def test_parse_text_snippet():
     assert (r["endpoint_a"], r["endpoint_b"]) == ("THALMANN", "")
     assert r["voltage_kv"] == 230
     assert r["in_service_date"] == "2025-06-01" and r["start_date"] == "2024-12-01"
+    assert (r["build_start"], r["build_end"]) == ("2024-12-01", "2025-06-01")
     assert r["est_cost_usd"] is None and r["length_mi"] is None
     assert r["source_ref"] == "Teams # 21046"
     assert rows[1]["project_name"] == "SAV: GOSHEN (SAV) - MCINTOSH 115KV LINE REBUILD"
@@ -79,3 +80,9 @@ def test_all_208_rows():
     assert all(len(r["project_name"]) < 100 for r in rows)
     kv = sum(1 for r in rows if r["voltage_kv"])
     assert kv == 165, kv  # the other 43 names carry no kV at all
+
+
+def test_inverted_gpc_dates_are_clamped_to_a_valid_window():
+    text = "X - Y 115KV REBUILD\nTeams # 1\nNeed Date 01/01/2025 Start Date 06/01/2026\n"
+    r = parse_text(text)[0]
+    assert r["build_start"] == r["build_end"] == "2025-01-01"

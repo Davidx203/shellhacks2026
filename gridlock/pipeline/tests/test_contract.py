@@ -14,7 +14,7 @@ def good():
         "project_id": "GPC_1", "utility": "GPC", "state": "GA", "project_name": "X",
         "endpoint_a": "X", "endpoint_b": "", "voltage_kv": "230", "project_type": "relay",
         "length_mi": "", "est_cost_usd": "", "start_date": "2024-01-01",
-        "in_service_date": "2026-06-01", "source_file": "f", "source_ref": "r",
+        "in_service_date": "2026-06-01", "build_start": "2024-01-01", "build_end": "2026-06-01", "source_file": "f", "source_ref": "r",
     }
 
 
@@ -29,6 +29,12 @@ def test_good_row_passes():
 def test_validator_catches_bad_rows(field, value):
     r = good()
     r[field] = value
+    assert validate([r])
+
+
+def test_validator_catches_inverted_build_window():
+    r = good()
+    r["build_start"], r["build_end"] = "2027-01-01", "2026-06-01"
     assert validate([r])
 
 

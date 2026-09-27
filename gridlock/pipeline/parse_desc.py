@@ -2,7 +2,7 @@
 import re
 from pathlib import Path
 
-from .common import endpoints, iso_date, max_kv
+from .common import clamp_window, endpoints, iso_date, max_kv
 
 _MILES = re.compile(r"(\d+(?:\.\d+)?)\s*miles?\b", re.I)
 _MONEY = re.compile(r"\$\s*([\d,]+)")
@@ -23,6 +23,21 @@ def _after(lines, label, stop=None):
     return out
 
 
+SPEND_START = ["2023-01-01", "2024-01-01", "2025-01-01", "2026-01-01", "2027-01-01", "2028-01-01"]
+
+
+def spend_start(cost_txt, in_service):
+    """First day of the first budget year with spend (Previous = before 2024 -> 2023-01-01).
+
+    Dominion gives no start date; the yearly spend table is the best evidence of when work begins.
+    """
+    amounts = [int(x.replace(",", "")) for x in _MONEY.findall(cost_txt)]
+    for iso, amount in zip(SPEND_START, amounts[:6]):
+        if amount > 0:
+            return iso
+    return f"{in_service[:4]}-01-01" if in_service else ""
+
+
 def parse_page(text, source_file):
     lines = _lines(text)
     name = " ".join(_after(lines, "5 Year Budget", stop="Project ID"))
@@ -33,6 +48,8 @@ def parse_page(text, source_file):
     dollars = _MONEY.findall(cost_txt)
     m = _MILES.search(name) or _MILES.search(desc)
     a, b = endpoints(name)
+    in_service = iso_date(date_txt)
+    build_start, build_end = clamp_window(spend_start(cost_txt, in_service), in_service)
     return {
         "project_id": f"DESC_{pid}",
         "utility": "DESC",
@@ -45,7 +62,9 @@ def parse_page(text, source_file):
         "length_mi": float(m.group(1)) if m else None,
         "est_cost_usd": int(dollars[-1].replace(",", "")) if dollars else None,
         "start_date": "",
-        "in_service_date": iso_date(date_txt),
+        "in_service_date": in_service,
+        "build_start": build_start,
+        "build_end": build_end,
         "source_file": source_file,
         "source_ref": lines[0],
     }

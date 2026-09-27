@@ -12,9 +12,6 @@ let overlaps = [];
 let selectedOverlapId = null;
 let distanceMarker = null;
 let flyByTimer = null;
-let orbitFrame = null;
-let orbitLastTime = null;
-let orbitBearing = 0;
 let suppressMapClick = false;
 let currentCameraIndex = 1;
 let listFilters = {
@@ -22,13 +19,16 @@ let listFilters = {
   maxDistance: null,
   minScore: null,
   voltageOnly: false,
+  topOnly: false,
 };
+const TOP_N = 20;
 
 const substationGroups = new Map();
 const substationMarkers = new Map();
 const opportunityCaps = new Map();
 const opportunityCapPoints = new Map();
 const overlapsById = new Map();
+const routesByProject = new Map();
 
 const emptyFeatureCollection = {
   type: "FeatureCollection",
@@ -36,6 +36,16 @@ const emptyFeatureCollection = {
 };
 
 const cameraStops = ["gpc", "center", "desc"];
+
+const defaultView = { center: [-81.5, 33.0], zoom: 7, pitch: 45, bearing: -8 };
+
+const basemaps = {
+  satellite: "mapbox://styles/mapbox/satellite-streets-v12",
+  streets: "mapbox://styles/mapbox/streets-v12",
+};
+let currentBasemap = "satellite";
+let dataLoaded = false;
+let layerEventsBound = false;
 
 function getMapboxToken() {
   const params = new URLSearchParams(window.location.search);
@@ -66,26 +76,98 @@ function initMap() {
   mapboxgl.accessToken = token;
   map = new mapboxgl.Map({
     container: "map",
-    style: "mapbox://styles/mapbox/satellite-streets-v12",
-    center: [-81.5, 33.0],
-    zoom: 7,
-    pitch: 45,
-    bearing: -8,
+    style: basemaps[currentBasemap],
+    ...defaultView,
     antialias: true,
   });
 
-  map.addControl(new mapboxgl.NavigationControl({ visualizePitch: true }), "top-left");
+  map.addControl(new mapboxgl.NavigationControl({ showZoom: false, visualizePitch: true }), "top-left");
   map.addControl(new mapboxgl.FullscreenControl(), "top-left");
 
   map.on("load", async () => {
     addTerrain();
     await load();
   });
+  map.on("style.load", restoreLayersAfterStyleChange);
+  initZoomSlider();
+  document.querySelector("#reset-view").addEventListener("click", resetView);
 
   map.on("click", () => {
     if (suppressMapClick) return;
     clearSelectedOverlap();
   });
+}
+
+function initZoomSlider() {
+  const slider = document.querySelector("#zoom-slider");
+  let dragging = false;
+  slider.value = map.getZoom();
+  slider.addEventListener("pointerdown", () => {
+    dragging = true;
+  });
+  window.addEventListener("pointerup", () => {
+    dragging = false;
+    slider.value = map.getZoom();
+  });
+  slider.addEventListener("input", () => {
+    map.stop();
+    map.setZoom(Number(slider.value));
+  });
+  map.on("zoom", () => {
+    if (!dragging) slider.value = map.getZoom();
+  });
+}
+
+function resetView() {
+  if (flyByTimer) {
+    clearTimeout(flyByTimer);
+    flyByTimer = null;
+  }
+  document.querySelectorAll(".mapboxgl-popup").forEach((popup) => popup.remove());
+  clearSelectedOverlap();
+  endFlyby();
+  map.flyTo({ ...defaultView, duration: 1100, essential: true });
+}
+
+function initBasemapControls() {
+  const buttons = document.querySelectorAll("[data-basemap]");
+  try {
+    const saved = localStorage.getItem("basemap");
+    if (saved in basemaps) currentBasemap = saved;
+  } catch {}
+  buttons.forEach((button) => {
+    button.addEventListener("click", (event) => {
+      event.stopPropagation();
+      setBasemap(button.dataset.basemap);
+    });
+  });
+  markActiveBasemap();
+}
+
+function markActiveBasemap() {
+  document.querySelectorAll("[data-basemap]").forEach((button) => {
+    button.classList.toggle("active", button.dataset.basemap === currentBasemap);
+  });
+}
+
+function setBasemap(name) {
+  if (!(name in basemaps) || name === currentBasemap) return;
+  currentBasemap = name;
+  try {
+    localStorage.setItem("basemap", name);
+  } catch {}
+  markActiveBasemap();
+  if (map) map.setStyle(basemaps[name]);
+}
+
+function restoreLayersAfterStyleChange() {
+  if (!dataLoaded || map.getSource("project-lines")) return;
+  addTerrain();
+  addMapSourcesAndLayers();
+  const selected = selectedOverlapId ? overlapsById.get(selectedOverlapId) : null;
+  if (selected) updateSelectionCircles([projectCenter(selected.gpc), projectCenter(selected.desc)]);
+  updateOverlapVisibility();
+  updateProjectVisibility(selected || null);
 }
 
 function addTerrain() {
@@ -185,9 +267,20 @@ function initListFilters() {
       maxDistance: distance.value ? Number(distance.value) : null,
       minScore: score.value ? Number(score.value) : null,
       voltageOnly: voltage.checked,
+      topOnly: listFilters.topOnly,
     };
     renderFilteredList();
   }
+
+  document.querySelectorAll("[data-top]").forEach((button) => {
+    button.addEventListener("click", () => {
+      listFilters.topOnly = button.dataset.top === "20";
+      document.querySelectorAll("[data-top]").forEach((other) => {
+        other.classList.toggle("active", other === button);
+      });
+      updateFilters();
+    });
+  });
 
   [search, distance, score, voltage].forEach((control) => {
     control.addEventListener("input", updateFilters);
@@ -218,10 +311,12 @@ function projectLineFeatures() {
   return projects.flatMap((project) => {
     const pts = endpoints(project);
     if (!pts) return [];
+    const route = routesByProject.get(project.project_id);
     return [
       {
         type: "Feature",
         properties: {
+          route_mi: route ? route.route_mi : "",
           project_id: project.project_id,
           project_name: project.project_name,
           utility: project.utility,
@@ -232,7 +327,7 @@ function projectLineFeatures() {
         },
         geometry: {
           type: "LineString",
-          coordinates: pts.map(lngLat),
+          coordinates: route ? route.coordinates : pts.map(lngLat),
         },
       },
     ];
@@ -331,8 +426,11 @@ function addMapSourcesAndLayers() {
     },
   });
 
-  bindMapLayerEvents();
-  requestAnimationFrame(animateOverlapLines);
+  if (!layerEventsBound) {
+    layerEventsBound = true;
+    bindMapLayerEvents();
+    requestAnimationFrame(animateOverlapLines);
+  }
 }
 
 function bindMapLayerEvents() {
@@ -360,6 +458,7 @@ function bindMapLayerEvents() {
         ${props.utility} · ${props.voltage_kv} kV<br>
         In service: ${props.in_service_date}<br>
         Confidence: ${props.confidence_tier}<br>
+        ${props.route_mi ? `Route along power line: ${props.route_mi} mi<br>` : ""}
         Source: ${props.source_ref}
       `)
       .addTo(map);
@@ -462,6 +561,18 @@ function opportunityCapForPoint(point, label, color, overlap) {
   return new mapboxgl.Marker({ element: el, anchor: "center" }).setLngLat(lngLat(point)).addTo(map);
 }
 
+const bandLabels = {
+  crossing: "Crossing",
+  share_land: "Share land",
+  share_logistics: "Share logistics",
+  share_crews: "Share crews",
+};
+
+function windowText(overlap) {
+  if (String(overlap.windows_overlap).toLowerCase() === "true") return `windows overlap ${overlap.overlap_days} d`;
+  return overlap.window_gap_days ? `${overlap.window_gap_days} d gap` : "timing unknown";
+}
+
 function renderList(items) {
   const list = document.querySelector("#overlaps");
   list.innerHTML = "";
@@ -473,7 +584,7 @@ function renderList(items) {
       <div><span class="rank">#${overlap.rank}</span> ${overlap.overlap_id}</div>
       <div>${overlap.gpc.project_name}</div>
       <div>${overlap.desc.project_name}</div>
-      <div class="meta">${overlap.distance_mi} mi · ${overlap.time_gap_days} days · score ${overlap.score}</div>
+      <div class="meta">${overlap.distance_mi} mi · ${bandLabels[overlap.band] || "n/a"} · ${windowText(overlap)} · score ${overlap.score}</div>
     `;
     button.addEventListener("click", (event) => {
       event.stopPropagation();
@@ -486,6 +597,7 @@ function renderList(items) {
 
 function filteredOverlaps() {
   return overlaps.filter((overlap) => {
+    if (listFilters.topOnly && Number(overlap.rank) > TOP_N) return false;
     if (listFilters.maxDistance !== null && Number(overlap.distance_mi) > listFilters.maxDistance) return false;
     if (listFilters.minScore !== null && Number(overlap.score) < listFilters.minScore) return false;
     if (listFilters.voltageOnly && String(overlap.voltage_match).toLowerCase() !== "true") return false;
@@ -506,11 +618,52 @@ function filteredOverlaps() {
   });
 }
 
+function filtersActive() {
+  return Boolean(
+    listFilters.search ||
+      listFilters.maxDistance !== null ||
+      listFilters.minScore !== null ||
+      listFilters.voltageOnly ||
+      listFilters.topOnly,
+  );
+}
+
+function shownOverlapIds() {
+  return filtersActive() ? new Set(filteredOverlaps().map((overlap) => overlap.overlap_id)) : null;
+}
+
+function overlapIsShown(id) {
+  const shown = shownOverlapIds();
+  return !shown || shown.has(id);
+}
+
+function shownProjectIds() {
+  const ids = new Set();
+  filteredOverlaps().forEach((overlap) => {
+    ids.add(overlap.project_id_gpc);
+    ids.add(overlap.project_id_desc);
+  });
+  return ids;
+}
+
+function matchFilter(property, values) {
+  return values.length ? ["match", ["get", property], values, true, false] : ["==", ["get", property], "__none__"];
+}
+
+function applyFiltersToMap() {
+  if (!map || !map.getLayer("overlap-lines")) return;
+  if (selectedOverlapId && !overlapIsShown(selectedOverlapId)) clearSelectedOverlap();
+  updateOverlapVisibility();
+  const selected = selectedOverlapId ? overlapsById.get(selectedOverlapId) : null;
+  updateProjectVisibility(selected || null);
+}
+
 function renderFilteredList() {
   const items = filteredOverlaps();
   renderList(items);
   document.querySelector("#filter-count").textContent = `${items.length} shown`;
   updateListVisibility();
+  applyFiltersToMap();
 }
 
 function selectOverlap(overlap) {
@@ -531,7 +684,7 @@ function selectOverlap(overlap) {
 
 function clearSelectedOverlap() {
   if (!selectedOverlapId) return;
-  stopCameraOrbit();
+  endFlyby();
   selectedOverlapId = null;
   updateOverlapVisibility();
   updateProjectVisibility(null);
@@ -591,10 +744,15 @@ function setActiveCameraButton(view) {
 
 function updateOverlapVisibility() {
   if (!map.getLayer("overlap-lines")) return;
-  map.setFilter("overlap-lines", selectedOverlapId ? ["==", ["get", "overlap_id"], selectedOverlapId] : null);
+  const shown = shownOverlapIds();
+  let lineFilter = null;
+  if (selectedOverlapId) lineFilter = ["==", ["get", "overlap_id"], selectedOverlapId];
+  else if (shown) lineFilter = matchFilter("overlap_id", [...shown]);
+  map.setFilter("overlap-lines", lineFilter);
   opportunityCaps.forEach((markers, id) => {
+    const visible = selectedOverlapId ? id === selectedOverlapId : !shown || shown.has(id);
     markers.forEach((marker) => {
-      marker.getElement().style.display = !selectedOverlapId || id === selectedOverlapId ? "grid" : "none";
+      marker.getElement().style.display = visible ? "grid" : "none";
     });
   });
 }
@@ -602,8 +760,14 @@ function updateOverlapVisibility() {
 function updateProjectVisibility(overlap) {
   if (!map.getLayer("project-lines")) return;
   if (!overlap) {
-    map.setFilter("project-lines", null);
-    applySubstationVisibility();
+    if (filtersActive()) {
+      const ids = shownProjectIds();
+      map.setFilter("project-lines", matchFilter("project_id", [...ids]));
+      applySubstationVisibility(ids);
+    } else {
+      map.setFilter("project-lines", null);
+      applySubstationVisibility();
+    }
     return;
   }
   const ids = [overlap.project_id_gpc, overlap.project_id_desc];
@@ -613,8 +777,9 @@ function updateProjectVisibility(overlap) {
 
 function visibleOpportunityCapPoints() {
   const visible = [];
+  const shown = shownOverlapIds();
   opportunityCapPoints.forEach((points, id) => {
-    if (!selectedOverlapId || id === selectedOverlapId) visible.push(...points);
+    if (selectedOverlapId ? id === selectedOverlapId : !shown || shown.has(id)) visible.push(...points);
   });
   return visible;
 }
@@ -694,7 +859,7 @@ function removeDistanceLabel() {
 }
 
 function flyToOpportunity(gpc, desc) {
-  stopCameraOrbit();
+  endFlyby();
   if (flyByTimer) clearTimeout(flyByTimer);
   const bounds = new mapboxgl.LngLatBounds(lngLat(gpc), lngLat(gpc));
   bounds.extend(lngLat(desc));
@@ -724,13 +889,13 @@ function flyToOpportunity(gpc, desc) {
     });
     flyByTimer = setTimeout(() => {
       flyByTimer = null;
-      startCameraOrbit(finalBearing);
+      endFlyby();
     }, 1850);
   }, 620);
 }
 
 function flyToSite(site, other, bearingOffset) {
-  stopCameraOrbit();
+  endFlyby();
   if (flyByTimer) clearTimeout(flyByTimer);
   const bearing = bearingBetween(site, other) + bearingOffset;
   map.getContainer().classList.add("flyby-active");
@@ -744,50 +909,24 @@ function flyToSite(site, other, bearingOffset) {
   });
   flyByTimer = setTimeout(() => {
     flyByTimer = null;
-    startCameraOrbit(bearing);
+    endFlyby();
   }, 1500);
 }
 
-function startCameraOrbit(startBearing) {
-  stopCameraOrbit();
-  orbitBearing = startBearing;
-  orbitLastTime = null;
-  map.getContainer().classList.add("flyby-active");
-
-  function orbit(time) {
-    if (!selectedOverlapId) {
-      stopCameraOrbit();
-      return;
-    }
-    if (orbitLastTime === null) orbitLastTime = time;
-    const elapsedSeconds = (time - orbitLastTime) / 1000;
-    orbitLastTime = time;
-    orbitBearing += elapsedSeconds * 7.5;
-    map.setBearing(orbitBearing);
-    orbitFrame = requestAnimationFrame(orbit);
-  }
-
-  orbitFrame = requestAnimationFrame(orbit);
-}
-
-function stopCameraOrbit() {
-  if (orbitFrame) {
-    cancelAnimationFrame(orbitFrame);
-    orbitFrame = null;
-  }
-  orbitLastTime = null;
+function endFlyby() {
   map?.getContainer().classList.remove("flyby-active");
 }
 
 function renderInspector(overlap) {
   document.querySelector("#inspector").innerHTML = `
     <h2>Selected opportunity</h2>
-    <p><strong>#${overlap.rank} ${overlap.overlap_id}</strong> connects nearby project center points from GPC and DESC.</p>
+    <p><strong>#${overlap.rank} ${overlap.overlap_id}</strong> links the closest points of two nearby GPC and DESC projects.</p>
     <div class="inspector-grid">
-      <div class="metric"><span>Distance</span><b>${overlap.distance_mi} mi</b></div>
-      <div class="metric"><span>Time gap</span><b>${overlap.time_gap_days} days</b></div>
+      <div class="metric"><span>Closest distance</span><b>${overlap.distance_mi} mi</b></div>
+      <div class="metric"><span>Coordination</span><b>${bandLabels[overlap.band] || "n/a"}</b></div>
+      <div class="metric"><span>Build windows</span><b>${windowText(overlap)}</b></div>
       <div class="metric"><span>Score</span><b>${overlap.score}</b></div>
-      <div class="metric"><span>Voltage</span><b>${overlap.voltage_match === "true" ? "match" : "differs"}</b></div>
+      <div class="metric"><span>Voltage</span><b>${String(overlap.voltage_match).toLowerCase() === "true" ? "match" : "differs"}</b></div>
     </div>
   `;
 }
@@ -796,11 +935,23 @@ async function load() {
   setStatus("Loading fixture data...");
   const [projectsRes, overlapsRes] = await Promise.all([
     fetch(`${API}/projects`),
-    fetch(`${API}/overlaps?limit=20`),
+    fetch(`${API}/overlaps?limit=200`),
   ]);
   if (!projectsRes.ok || !overlapsRes.ok) throw new Error("API request failed");
   projects = await projectsRes.json();
   overlaps = await overlapsRes.json();
+  routesByProject.clear();
+  try {
+    const routesRes = await fetch(`${API}/routes`);
+    if (routesRes.ok) {
+      (await routesRes.json()).features.forEach((feature) => {
+        routesByProject.set(feature.properties.project_id, {
+          route_mi: feature.properties.route_mi,
+          coordinates: feature.geometry.coordinates,
+        });
+      });
+    }
+  } catch {}
   overlaps.forEach((overlap) => overlapsById.set(overlap.overlap_id, overlap));
 
   buildSubstationGroups();
@@ -809,9 +960,11 @@ async function load() {
   drawOpportunityCaps();
   applySubstationVisibility();
   renderFilteredList();
+  dataLoaded = true;
   setStatus(`${projects.length} projects and ${overlaps.length} overlaps loaded from the API.`);
 }
 
 initListFilters();
 initCameraControls();
+initBasemapControls();
 initMap();

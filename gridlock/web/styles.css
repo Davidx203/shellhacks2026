@@ -383,11 +383,18 @@ h2 {
   backdrop-filter: blur(8px);
 }
 
-.camera-controls {
+.map-controls-stack {
   position: absolute;
   top: 20px;
   left: 20px;
   z-index: 520;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: fit-content;
+}
+
+.camera-controls {
   display: flex;
   overflow: hidden;
   border: 1px solid rgba(23, 32, 38, 0.13);
@@ -530,4 +537,123 @@ path.pulse-line {
     max-width: none;
     font-size: 1.5rem;
   }
+}
+
+.basemap-controls {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  z-index: 520;
+  display: flex;
+  overflow: hidden;
+  border: 1px solid rgba(23, 32, 38, 0.13);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: var(--shadow);
+  backdrop-filter: blur(8px);
+}
+
+.basemap-controls button {
+  min-width: 84px;
+  height: 40px;
+  border: 0;
+  border-right: 1px solid var(--line);
+  background: transparent;
+  color: #4f616c;
+  cursor: pointer;
+  font-size: 0.84rem;
+  font-weight: 800;
+  transition: background 150ms ease, color 150ms ease;
+}
+
+.basemap-controls button:last-child {
+  border-right: 0;
+}
+
+.basemap-controls button:hover,
+.basemap-controls button:focus-visible,
+.basemap-controls button.active {
+  background: #effaf4;
+  color: var(--overlap);
+  outline: none;
+}
+
+.zoom-control {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 40px;
+  padding: 0 14px;
+  border: 1px solid rgba(23, 32, 38, 0.13);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: var(--shadow);
+  backdrop-filter: blur(8px);
+  color: #4f616c;
+  font-weight: 800;
+}
+
+.zoom-control input[type="range"] {
+  flex: 1;
+  min-width: 0;
+  accent-color: var(--overlap);
+  cursor: pointer;
+}
+
+.reset-view {
+  height: 40px;
+  border: 1px solid rgba(23, 32, 38, 0.13);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: var(--shadow);
+  backdrop-filter: blur(8px);
+  color: #4f616c;
+  cursor: pointer;
+  font-size: 0.84rem;
+  font-weight: 800;
+  transition: background 150ms ease, color 150ms ease;
+}
+
+.reset-view:hover,
+.reset-view:focus-visible {
+  background: #effaf4;
+  color: var(--overlap);
+  outline: none;
+}
+
+.mapboxgl-ctrl-top-left {
+  top: 160px !important;
+  left: 10px !important;
+}
+
+.segmented {
+  display: flex;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.segmented button {
+  height: 30px;
+  padding: 0 12px;
+  border: 0;
+  border-right: 1px solid var(--line);
+  background: transparent;
+  color: #4f616c;
+  cursor: pointer;
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.segmented button:last-child {
+  border-right: 0;
+}
+
+.segmented button:hover,
+.segmented button:focus-visible,
+.segmented button.active {
+  background: #effaf4;
+  color: var(--overlap);
+  outline: none;
 }

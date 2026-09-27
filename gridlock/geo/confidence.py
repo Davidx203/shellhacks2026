@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from overlap import haversine_miles
-from geocode import border_distance_mi
+from geocode import border_distance_mi, max_plausible_miles
 
 
 OPERATORS = {
@@ -48,16 +48,28 @@ def score_project(project: dict, matches: dict) -> dict:
     result = dict(project)
     required = ["a"] + (["b"] if project.get("endpoint_b") else [])
     score = sum(endpoint_confidence(matches.get(s), project["utility"], project["state"]) for s in required) / len(required)
-    if matches.get("a") and matches.get("b") and project.get("length_mi"):
+    if matches.get("a") and matches.get("b"):
         straight = haversine_miles(project["lat_a"], project["lon_a"], project["lat_b"], project["lon_b"])
-        stated = float(project["length_mi"])
-        if stated > 0 and straight > max(stated * 3, stated + 10):
+        if straight > max_plausible_miles(project):
             score *= 0.25
     score = round(score, 3)
     result["confidence"] = score
-    result["confidence_tier"] = (
-        "unmatched" if not any(matches.get(s) for s in required) else
-        "high" if score >= 0.8 else "medium" if score >= 0.5 else "low"
-    )
+    result["confidence_tier"] = tier_for(score, any(matches.get(s) for s in required))
     result["human_verified"] = "false"
     return result
+
+
+def tier_for(score: float, any_match: bool) -> str:
+    return "unmatched" if not any_match else "high" if score >= 0.8 else "medium" if score >= 0.5 else "low"
+
+
+def apply_route_evidence(project: dict) -> None:
+    """A route along same-voltage lines matching any stated length is evidence the pair is right."""
+    if project.get("route_mi") in ("", None) or project["confidence_tier"] == "unmatched":
+        return
+    route = float(project["route_mi"])
+    stated = float(project["length_mi"]) if project.get("length_mi") else None
+    if stated and not (0.5 * stated <= route <= 2 * stated):
+        return
+    project["confidence"] = round(min(1.0, float(project["confidence"]) + 0.1), 3)
+    project["confidence_tier"] = tier_for(project["confidence"], True)

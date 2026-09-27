@@ -76,6 +76,8 @@ All dates are ISO format `YYYY-MM-DD`. All distances are miles. All coordinates 
 | `est_cost_usd` | integer | `3000000` | DESC only (GPC costs are redacted). Blank otherwise |
 | `start_date` | date | `2024-01-01` | Blank if not given |
 | `in_service_date` | date | `2026-06-01` | GPC calls this "Need Date" |
+| `build_start` | date | `2024-01-01` | Start of the build window. GPC: its `Start Date`. DESC: Jan 1 of the first budget year with spend (`Previous` spend counts as `2023-01-01`), since DESC gives no start date. Never after `build_end` |
+| `build_end` | date | `2026-06-01` | Same as `in_service_date` |
 | `source_file` | string | `desc_pages/43.txt` | So anyone can check the original |
 | `source_ref` | string | `Project 43 of 44` or `Teams # 20277` | |
 
@@ -92,6 +94,7 @@ Every column from `projects_raw.csv`, plus:
 | `confidence` | float | 0.0 to 1.0 |
 | `confidence_tier` | string | `high` (0.8 and up), `medium` (0.5 to 0.8), `low` (below 0.5), `unmatched` |
 | `human_verified` | boolean | `true` once Luis D confirms it against the source |
+| `route_mi` | float | Length of the route found along same-voltage OSM power lines between endpoint A and B. Blank if no route. Geometry is in `routes.geojson` |
 
 ### `data/processed/overlaps.csv` (written by Anders G)
 
@@ -100,8 +103,12 @@ Every column from `projects_raw.csv`, plus:
 | `overlap_id` | string | `OVL_1`, `OVL_2`, ... in rank order |
 | `project_id_gpc` | string | |
 | `project_id_desc` | string | |
-| `distance_mi` | float | Haversine distance between center points, 2 decimals |
+| `distance_mi` | float | **Closest-point** distance between the two projects' geometries (route, else the A-B segment, else the point), 2 decimals |
+| `band` | string | `crossing` (touching, <=0.05 mi), `share_land` (<1 mi, about 1.6 km), `share_logistics` (<5 mi, about 8 km), `share_crews` (<25 mi, about 40 km) |
 | `time_gap_days` | integer | Absolute difference between in service dates |
+| `windows_overlap` | boolean | Build windows (`build_start` to `build_end`) intersect |
+| `overlap_days` | integer | Days the two build windows overlap (0 if they do not) |
+| `window_gap_days` | integer | Days between the windows when they do not overlap (0 if they overlap) |
 | `voltage_match` | boolean | Same `voltage_kv` on both |
 | `score` | float | 0.0 to 1.0, see formula in `02_GEO_LEAD_ANDERS.md` |
 | `rank` | integer | 1 is the best opportunity |

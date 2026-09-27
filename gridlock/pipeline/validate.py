@@ -26,10 +26,12 @@ def validate(rows, columns=None):
             errs.append(f"{pid}: blank project_name")
         if r.get("project_type") not in TYPES:
             errs.append(f"{pid}: bad project_type {r.get('project_type')!r}")
-        for col in ("start_date", "in_service_date"):
+        for col in ("start_date", "in_service_date", "build_start", "build_end"):
             v = r.get(col, "")
             if v and not _ISO.match(str(v)):
                 errs.append(f"{pid}: {col} not ISO: {v!r}")
+        if r.get("build_start") and r.get("build_end") and r["build_start"] > r["build_end"]:
+            errs.append(f"{pid}: build_start after build_end")
         if not r.get("in_service_date"):
             errs.append(f"{pid}: blank in_service_date")
         for col in ("voltage_kv", "est_cost_usd"):
