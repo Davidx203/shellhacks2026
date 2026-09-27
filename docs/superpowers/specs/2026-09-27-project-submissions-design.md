@@ -41,6 +41,8 @@ PDF or form  ->  API preview (parse, validate, diff)  ->  submitter confirms
    geo/run_all.py (unchanged flow) -> data/processed/*.csv -> load_db -> gridlock.db -> API -> map
 ```
 
+`build_raw.py` merges onto a committed baseline, `data/interim/projects_report.csv`, rather than re-parsing the report text. The extracted report text is gitignored, so a machine without it (for example the app lead's) could not rebuild otherwise. When the text is present, `build_raw.py` re-parses it and refreshes the baseline.
+
 The rebuild (`build_raw.py`, then `geo/run_all.py`, then the database load) runs as a background job started by the commit call. It takes about 10 seconds with caches, plus about 1 second per new place name that needs a Nominatim lookup.
 
 ## Components
