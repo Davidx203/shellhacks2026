@@ -50,3 +50,14 @@ def test_real_csv_meets_contract():
         assert reader.fieldnames == COLUMNS
     assert validate(rows) == []
     assert {r["utility"] for r in rows} <= {"GPC", "DESC"}
+
+
+from pipeline.common import RAW_COLUMNS
+
+
+def test_raw_columns_extend_the_contract_without_reordering_it():
+    assert RAW_COLUMNS[: len(COLUMNS)] == COLUMNS
+    assert len(set(RAW_COLUMNS)) == len(RAW_COLUMNS)
+    for extra in ("origin", "submission_id", "submitted_by", "submitted_at",
+                  "given_lat_a", "given_lon_a", "given_lat_b", "given_lon_b"):
+        assert extra in RAW_COLUMNS

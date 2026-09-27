@@ -16,3 +16,11 @@ def classify(name):
         if re.search(pattern, name, re.I):
             return label
     return "other"
+
+
+def finalize_row(row):
+    """Set project_type from the name; relay projects are single-site, so endpoint_b is cleared."""
+    row["project_type"] = classify(row["project_name"])
+    if row["project_type"] == "relay":
+        row["endpoint_b"] = ""
+    return row
