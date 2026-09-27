@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Grid Wrapped | GridLock</title>
+    <link rel="stylesheet" href="./wrapped.css?v=electric-paper-1" />
+  </head>
+  <body>
+    <div class="ambient-grid" aria-hidden="true"></div>
+    <main class="wrapped-shell">
+      <header class="wrapped-nav">
+        <a class="brand-link" href="/" aria-label="Back to GridLock dashboard">
+          <span class="brand-mark">GL</span>
+          <span>
+            <strong>GridLock</strong>
+            <small>Grid Wrapped</small>
+          </span>
+        </a>
+        <a class="dashboard-link" href="/">Dashboard</a>
+      </header>
+
+      <section id="app" class="view-root" aria-live="polite">
+        <div class="loading-state">
+          <p class="kicker">Grid Wrapped</p>
+          <h1>Loading the grid story...</h1>
+        </div>
+      </section>
+    </main>
+
+    <script src="./wrapped.js?v=electric-paper-1"></script>
+  </body>
+</html>
