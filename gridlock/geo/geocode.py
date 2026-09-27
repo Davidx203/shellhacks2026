@@ -10,7 +10,7 @@ from pathlib import Path
 import requests
 from rapidfuzz import fuzz
 
-from overlap import haversine_miles
+from overlap import haversine_miles, max_plausible_miles
 
 
 DATA = Path(__file__).resolve().parents[1] / "data"
@@ -183,18 +183,8 @@ def match_endpoint(name: str, features: list[dict], expected_state: str, utility
     return found[0] if found else None
 
 
-MAX_LINE_MI_BY_KV = {46: 40, 69: 50, 115: 60, 138: 70, 230: 90, 500: 150}
 SAVANNAH = (32.08, -81.09)
 AREA_HINTS = {"SAV:": (SAVANNAH, 70)}
-
-
-def max_plausible_miles(project: dict) -> float:
-    """Longest straight-line separation we accept between a line's two endpoints."""
-    if project.get("length_mi"):
-        stated = float(project["length_mi"])
-        return max(stated * 3, stated + 10)
-    kv = int(project["voltage_kv"]) if str(project.get("voltage_kv") or "").isdigit() else 0
-    return MAX_LINE_MI_BY_KV.get(kv, 100)
 
 
 def _in_hint_area(project: dict, candidates: list[dict]) -> list[dict]:
@@ -227,7 +217,7 @@ def choose_pair(project: dict, cands_a: list[dict], cands_b: list[dict]) -> tupl
     return best[1], best[2]
 
 
-def geocode_project(project: dict, features: list[dict]) -> tuple[dict, dict]:
+def geocode_project(project: dict, features: list[dict], inferrer=None) -> tuple[dict, dict]:
     result = dict(project)
     cands = {}
     for suffix in ("a", "b"):
@@ -243,6 +233,11 @@ def geocode_project(project: dict, features: list[dict]) -> tuple[dict, dict]:
         matches = dict(zip(("a", "b"), choose_pair(project, cands["a"], cands["b"])))
     else:
         matches = {s: (cands[s][0] if cands[s] else None) for s in ("a", "b")}
+    methods = {s: ("name_relaxed" if m.get("relaxed") else "name") for s, m in matches.items() if m}
+    if inferrer is not None:
+        matches, inferred = inferrer.infer(project, matches)
+        methods.update(inferred)
+    result["geocode_method"] = ";".join(f"{s}:{methods[s]}" for s in ("a", "b") if s in methods)
     for suffix in ("a", "b"):
         match = matches[suffix]
         coords = match["feature"]["geometry"]["coordinates"] if match else None

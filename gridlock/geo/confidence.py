@@ -6,6 +6,8 @@ from overlap import haversine_miles
 from geocode import border_distance_mi, max_plausible_miles
 
 
+INFERRED_CEILING = 0.79   # an inferred endpoint can never make a project "high"
+
 OPERATORS = {
     "GPC": ("GEORGIA POWER", "SOUTHERN"),
     "DESC": ("DOMINION", "SCE&G", "SOUTH CAROLINA ELECTRIC"),
@@ -52,6 +54,8 @@ def score_project(project: dict, matches: dict) -> dict:
         straight = haversine_miles(project["lat_a"], project["lon_a"], project["lat_b"], project["lon_b"])
         if straight > max_plausible_miles(project):
             score *= 0.25
+    if any(m and m.get("inferred") for m in matches.values()):
+        score = min(score, INFERRED_CEILING)
     score = round(score, 3)
     result["confidence"] = score
     result["confidence_tier"] = tier_for(score, any(matches.get(s) for s in required))
@@ -71,5 +75,6 @@ def apply_route_evidence(project: dict) -> None:
     stated = float(project["length_mi"]) if project.get("length_mi") else None
     if stated and not (0.5 * stated <= route <= 2 * stated):
         return
-    project["confidence"] = round(min(1.0, float(project["confidence"]) + 0.1), 3)
+    ceiling = INFERRED_CEILING if "inferred" in str(project.get("geocode_method", "")) else 1.0
+    project["confidence"] = round(min(ceiling, float(project["confidence"]) + 0.1), 3)
     project["confidence_tier"] = tier_for(project["confidence"], True)

@@ -13,13 +13,14 @@ from confidence import apply_route_evidence, score_project
 from cost import make_brief
 from geocode import CACHE, border_distance_mi, fetch_substations, geocode_project
 from rank import rank_overlaps
+from infer import Inferrer, PlaceLookup, fetch_all_substations
 from routes import PowerGrid, attach_routes, fetch_power_lines
 
 
 DATA = Path(__file__).resolve().parents[1] / "data"
 RAW = DATA / "interim" / "projects_raw.csv"
 PROCESSED = DATA / "processed"
-PROJECT_EXTRA = ["lat_a", "lon_a", "lat_b", "lon_b", "lat_center", "lon_center", "osm_id_a", "osm_id_b", "confidence", "confidence_tier", "human_verified", "route_mi"]
+PROJECT_EXTRA = ["lat_a", "lon_a", "lat_b", "lon_b", "lat_center", "lon_center", "osm_id_a", "osm_id_b", "confidence", "confidence_tier", "human_verified", "route_mi", "geocode_method"]
 OVERLAP_COLUMNS = ["overlap_id", "project_id_gpc", "project_id_desc", "distance_mi", "band", "time_gap_days", "windows_overlap", "overlap_days", "window_gap_days", "voltage_match", "score", "rank"]
 BRIEF_COLUMNS = ["overlap_id", "shared_corridor_mi", "row_width_ft", "shared_acres", "land_cost_per_acre_usd", "est_land_savings_usd", "assumptions_note"]
 
@@ -63,13 +64,20 @@ def review_distance(project: dict) -> float:
 def build(raw: Path = RAW, output: Path = PROCESSED, cache: Path = CACHE) -> tuple[list[dict], list[dict], list[dict]]:
     columns, raw_projects = read_csv(raw)
     features = fetch_substations(cache)
+    ways = fetch_power_lines()
+    grid = PowerGrid(ways) if ways else None
+    all_substations = fetch_all_substations() if grid else None
+    if grid and not all_substations:
+        print("WARNING: all-substations data unavailable (Overpass down?); endpoint inference skipped")
+    places = PlaceLookup()
+    inferrer = Inferrer(all_substations, grid, places) if all_substations else None
     projects = []
     for item in raw_projects:
-        located, matches = geocode_project(item, features)
+        located, matches = geocode_project(item, features, inferrer)
         projects.append(score_project(located, matches))
-    ways = fetch_power_lines()
-    if ways:
-        route_features = attach_routes(projects, PowerGrid(ways))
+    places.save()
+    if grid:
+        route_features = attach_routes(projects, grid)
         for project in projects:
             apply_route_evidence(project)
         (output / "routes.geojson").write_text(json.dumps({"type": "FeatureCollection", "features": route_features}), encoding="utf-8")
@@ -77,7 +85,7 @@ def build(raw: Path = RAW, output: Path = PROCESSED, cache: Path = CACHE) -> tup
     else:
         for project in projects:
             project["route_mi"] = ""
-        print("Power-line data unavailable; skipped routes (routes.geojson left as is)")
+        print("Power-line data unavailable; skipped routes and endpoint inference (routes.geojson left as is)")
     apply_manual_fixes(projects, output / "manual_fixes.csv")
     routes_path = output / "routes.geojson"
     routes = {}
@@ -90,10 +98,12 @@ def build(raw: Path = RAW, output: Path = PROCESSED, cache: Path = CACHE) -> tup
     write_csv(output / "projects.csv", columns + PROJECT_EXTRA, projects)
     write_csv(output / "overlaps.csv", OVERLAP_COLUMNS, overlaps)
     write_csv(output / "briefs.csv", BRIEF_COLUMNS, briefs)
+    overlap_counts = Counter(pid for pair in overlaps for pid in (pair["project_id_gpc"], pair["project_id_desc"]))
     review = sorted((p for p in projects if p["confidence_tier"] in {"low", "unmatched"}),
-                    key=lambda p: (review_distance(p), p["project_id"]))
-    write_csv(output / "geo_review_queue.csv", ["project_id", "utility", "project_name", "endpoint_a", "endpoint_b", "confidence_tier", "lat_center", "lon_center", "border_distance_mi"],
-              [{**{k: p[k] for k in ("project_id", "utility", "project_name", "endpoint_a", "endpoint_b", "confidence_tier", "lat_center", "lon_center")},
+                    key=lambda p: (-overlap_counts[p["project_id"]], review_distance(p), p["project_id"]))
+    write_csv(output / "geo_review_queue.csv", ["project_id", "utility", "project_name", "endpoint_a", "endpoint_b", "confidence_tier", "geocode_method", "overlap_count", "lat_center", "lon_center", "border_distance_mi"],
+              [{**{k: p[k] for k in ("project_id", "utility", "project_name", "endpoint_a", "endpoint_b", "confidence_tier", "geocode_method", "lat_center", "lon_center")},
+                "overlap_count": overlap_counts[p["project_id"]],
                 "border_distance_mi": "" if math.isinf(review_distance(p)) else round(review_distance(p), 1)} for p in review])
     print(f"Projects: {len(projects)}; overlaps: {len(overlaps)}; briefs: {len(briefs)}")
     print("By utility and tier:", dict(sorted(Counter((p["utility"], p["confidence_tier"]) for p in projects).items())))

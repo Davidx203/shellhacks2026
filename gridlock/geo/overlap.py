@@ -32,6 +32,16 @@ def project_center(project):
     return None
 
 
+MAX_LINE_MI_BY_KV = {46: 40, 69: 50, 115: 60, 138: 70, 230: 90, 500: 150}
+def max_plausible_miles(project: dict) -> float:
+    """Longest straight-line separation we accept between a line's two endpoints."""
+    if project.get("length_mi"):
+        stated = float(project["length_mi"])
+        return max(stated * 3, stated + 10)
+    kv = int(project["voltage_kv"]) if str(project.get("voltage_kv") or "").isdigit() else 0
+    return MAX_LINE_MI_BY_KV.get(kv, 100)
+
+
 def band_for(distance_mi):
     """crossing (touching), share_land (~1.6 km), share_logistics (~8 km), share_crews (~40 km)."""
     for limit, name in BANDS:
@@ -48,7 +58,11 @@ def project_geometry(project, routes=None):
     if routes and project["project_id"] in routes:
         return routes[project["project_id"]]
     if project.get("lat_a") and project.get("lat_b"):
-        return [(float(project["lat_a"]), float(project["lon_a"])), (float(project["lat_b"]), float(project["lon_b"]))]
+        a = (float(project["lat_a"]), float(project["lon_a"]))
+        b = (float(project["lat_b"]), float(project["lon_b"]))
+        if haversine_miles(*a, *b) > max_plausible_miles(project):
+            return None     # endpoints too far apart to be one line: a wrong match; wait for verification
+        return [a, b]
     center = project_center(project)
     return [center] if center else None
 

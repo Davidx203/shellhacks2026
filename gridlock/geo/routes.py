@@ -91,6 +91,43 @@ class PowerGrid:
                         best, best_d = node, d
         return best
 
+    def distances_from(self, kv: int, point: tuple[float, float], cutoff: float) -> dict:
+        """Miles along `kv` lines from `point` to every reachable node within cutoff (empty if none)."""
+        if kv not in self.by_kv:
+            return {}
+        adj, cells = self._graph(kv)
+        start = self._nearest(cells, point)
+        if not start:
+            return {}
+        dist = {start: 0.0}
+        queue = [(0.0, start)]
+        while queue:
+            d, node = heapq.heappop(queue)
+            if d > dist.get(node, float("inf")) or d > cutoff:
+                continue
+            for nxt, w in adj[node]:
+                nd = d + w
+                if nd < dist.get(nxt, float("inf")) and nd <= cutoff:
+                    dist[nxt] = nd
+                    heapq.heappush(queue, (nd, nxt))
+        return dist
+
+    def distance_to(self, kv: int, dist: dict, point: tuple[float, float]) -> float | None:
+        """Route miles from the source of `dist` to `point`, entering the line network within SNAP_MI."""
+        if kv not in self.by_kv or not dist:
+            return None
+        _, cells = self._graph(kv)
+        cy, cx = round(point[0] / CELL), round(point[1] / CELL)
+        best = None
+        for dy in range(-3, 4):
+            for dx in range(-3, 4):
+                for node in cells.get((cy + dy, cx + dx), ()):
+                    if node in dist:
+                        gap = haversine_miles(*point, *node)
+                        if gap <= SNAP_MI and (best is None or dist[node] + gap < best):
+                            best = dist[node] + gap
+        return best
+
     def route(self, kv: int, a: tuple[float, float], b: tuple[float, float], cutoff: float):
         """(miles, [(lat, lon), ...]) along lines of `kv`, or None when no route within cutoff."""
         if kv not in self.by_kv:

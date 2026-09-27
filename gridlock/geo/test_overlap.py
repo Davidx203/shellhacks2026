@@ -121,3 +121,11 @@ def test_partial_location_is_not_treated_as_a_failed_match():
     assert effective_confidence(both) == pytest.approx(0.9)
     assert effective_confidence(one_of_two) == pytest.approx(0.85 * 0.85)
     assert effective_confidence(single_site) == pytest.approx(0.85)
+
+
+def test_implausible_endpoint_pair_is_left_out_of_overlaps():
+    wrong_match = project("G", "GPC", 33.8, -80.6, 32.4, -81.1)     # ~100 mi "115 kV line": a bad endpoint match
+    near = project("D", "DESC", 33.1, -80.85)                        # sits right under that bogus segment
+    assert find_overlaps([wrong_match, near]) == []
+    routed = find_overlaps([wrong_match, near], routes={"G": [(33.1, -80.86), (33.1, -80.84)]})
+    assert routed and routed[0]["distance_mi"] < 1
