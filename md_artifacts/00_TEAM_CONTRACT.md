@@ -161,13 +161,13 @@ A company can upload a PDF (Georgia Power IRP layout or Dominion project page la
 
 **New `projects_raw.csv` columns** (after the 16 contract columns): `origin` (`report`, `pdf` or `form`), `submission_id`, `submitted_by`, `submitted_at`, `given_lat_a`, `given_lon_a`, `given_lat_b`, `given_lon_b` (optional coordinates that skip name matching for that endpoint). These flow through to `projects.csv`.
 
-**Rules:** blank submitted fields keep the existing value; only valid, changed rows are saved; unverified submissions are capped at confidence 0.6 (`medium`) until `manual_fixes.csv` verifies them; rejecting a submission restores the previous values.
+**Rules:** blank submitted fields keep the existing value (a form update derives and defaults nothing, so it changes only what was filled in); the current state is the baseline plus active submissions, not the last rebuild's output; generated ids (`GPC_SUB1`, ...) are never reused, even after a reject; the original PDF is kept at `data/submissions/<sha256>.pdf` and every row it produced carries `[pdf sha256:<16>]` in `source_ref`; only valid, changed rows are saved; unverified submissions are capped at confidence 0.6 (`medium`) until `manual_fixes.csv` verifies them; rejecting a submission restores the previous values.
 
 | Method | Path | Purpose |
 | --- | --- | --- |
-| `POST` | `/submissions/preview/pdf` | multipart `utility`, `file`; returns rows with `status` (`new`, `update`, `unchanged`, `invalid`), `changes`, `errors` |
+| `POST` | `/submissions/preview/pdf` | multipart `utility`, `file`; returns `upload_sha256` and rows with `status` (`new`, `update`, `unchanged`, `invalid`), `changes`, `errors`, and a `summary` (the project as it will read after the update) |
 | `POST` | `/submissions/preview/form` | JSON form fields; same response |
-| `POST` | `/submissions/commit` | `{utility, origin, submitted_by, rows}`; saves valid changed rows and starts a rebuild; returns `saved`, `skipped`, `job_id` |
+| `POST` | `/submissions/commit` | `{utility, origin, submitted_by, rows, expected, upload_sha256}`; `expected` maps project id to the status the submitter saw in the preview (a row whose status changed since is skipped); diff and save happen in one locked step, so a repeat saves nothing; returns `saved`, `skipped`, `job_id` |
 | `GET` | `/submissions/jobs/{job_id}` | `queued`, `running`, `done`, `failed` with a message |
 | `GET` | `/submissions` | history, newest first |
 | `POST` | `/submissions/{id}/reject` and `/restore` | reversible; each starts a rebuild |

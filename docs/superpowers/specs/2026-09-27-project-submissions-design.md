@@ -52,7 +52,7 @@ The rebuild (`build_raw.py`, then `geo/run_all.py`, then the database load) runs
 - `read_pdf(bytes, utility) -> list[dict]` returns contract rows (`parse_gpc.parse_text` or `parse_desc.parse_page` output).
 - Extracts text with PyMuPDF. Detects the layout: `Teams # ` lines mean the Georgia Power layout; pages containing `Project ID` and `Planned In-Service Date` mean the Dominion layout (one project per page).
 - Errors, each with a plain message: not a PDF (magic bytes), too large (over 20 MB), too many pages (over 800), no text layer, layout not recognised, layout does not match the selected company.
-- `source_file` is `submission:<filename>` and `source_ref` comes from the parser, so anyone can trace a row to its origin. The original PDF is kept at `data/submissions/<submission_id>.pdf` (gitignored).
+- `source_file` is `submission:<filename>` and `source_ref` comes from the parser, so anyone can trace a row to its origin. The original PDF is kept at `data/submissions/<sha256>.pdf` (gitignored, one file per upload, since one PDF can yield up to 208 submissions), and every row it produced carries `[pdf sha256:<16>]` in `source_ref`.
 
 ### 2. `pipeline/submission_store.py` (validation, diff, storage)
 
