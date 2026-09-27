@@ -33,7 +33,7 @@ class ProjectPatch(BaseModel):
 class ChatMessageInput(BaseModel):
     company: Literal["GPC", "DESC"]
     sender_name: str
-    kind: Literal["job_update", "tool_request", "equipment_request"]
+    kind: Literal["job_update", "equipment_request", "emergency"]
     body: str
     reference: str = ""
 

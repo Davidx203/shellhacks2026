@@ -101,6 +101,8 @@
 .chat-message-type { margin-top: 6px; color: #52636d; font-size: 0.72rem; font-weight: 750; }
 .chat-message-type.type-tool_request,
 .chat-message-type.type-equipment_request { color: #a04b1e; }
+.chat-message-type.type-emergency { color: #b42318; }
+.chat-message:has(.type-emergency) { border-color: #e8aaa5; background: #fff8f7; }
 .chat-message-body { margin: 6px 0 0; color: #172026; font-size: 0.9rem; line-height: 1.35; white-space: pre-wrap; }
 .chat-status { min-height: 16px; padding: 0 15px; color: #52636d; font-size: 0.72rem; }
 .chat-status.is-error { color: #b23b32; }

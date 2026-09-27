@@ -11,6 +11,7 @@
     job_update: "Job update",
     tool_request: "Tool request",
     equipment_request: "Equipment request",
+    emergency: "Emergency",
   };
   const toggle = document.querySelector("#chat-toggle");
   const panel = document.querySelector("#chat-panel");

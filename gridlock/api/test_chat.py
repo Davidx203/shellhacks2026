@@ -42,19 +42,32 @@ def test_shared_chat_persists_and_supports_incremental_reads(tmp_path, monkeypat
         assert second_message["id"] > first_message["id"]
         assert second_message["reference"] == ""
 
+        emergency = client.post(
+            "/messages",
+            json={
+                "company": "GPC",
+                "sender_name": "Alex",
+                "kind": "emergency",
+                "body": "Crew needs immediate help",
+            },
+        )
+        assert emergency.status_code == 201
+        emergency_message = emergency.json()
+        assert emergency_message["kind"] == "emergency"
+
     with TestClient(main.app) as reloaded_client:
-        assert reloaded_client.get("/messages").json() == [first_message, second_message]
+        assert reloaded_client.get("/messages").json() == [first_message, second_message, emergency_message]
         assert reloaded_client.get(
             "/messages", params={"after_id": first_message["id"]}
-        ).json() == [second_message]
-        assert reloaded_client.get("/messages", params={"limit": 1}).json() == [second_message]
+        ).json() == [second_message, emergency_message]
+        assert reloaded_client.get("/messages", params={"limit": 1}).json() == [emergency_message]
 
 
 def test_chat_rejects_empty_and_invalid_messages(tmp_path, monkeypatch):
     database = tmp_path / "gridlock.db"
     sqlite3.connect(database).close()
     monkeypatch.setattr(main, "DB_PATH", database)
-    valid = {"company": "GPC", "sender_name": "Alex", "kind": "tool_request", "body": "Need a wrench"}
+    valid = {"company": "GPC", "sender_name": "Alex", "kind": "equipment_request", "body": "Need a bucket truck"}
 
     with TestClient(main.app) as client:
         for field, invalid_value in (
@@ -62,6 +75,7 @@ def test_chat_rejects_empty_and_invalid_messages(tmp_path, monkeypatch):
             ("body", "   "),
             ("company", "UNKNOWN"),
             ("kind", "other"),
+            ("kind", "tool_request"),
             ("reference", "x" * 81),
         ):
             response = client.post("/messages", json={**valid, field: invalid_value})
