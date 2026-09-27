@@ -34,6 +34,8 @@ const emptyFeatureCollection = {
 
 const cameraStops = ["gpc", "center", "desc"];
 
+const defaultView = { center: [-81.5, 33.0], zoom: 7, pitch: 45, bearing: -8 };
+
 const basemaps = {
   satellite: "mapbox://styles/mapbox/satellite-streets-v12",
   streets: "mapbox://styles/mapbox/streets-v12",
@@ -72,10 +74,7 @@ function initMap() {
   map = new mapboxgl.Map({
     container: "map",
     style: basemaps[currentBasemap],
-    center: [-81.5, 33.0],
-    zoom: 7,
-    pitch: 45,
-    bearing: -8,
+    ...defaultView,
     antialias: true,
   });
 
@@ -88,6 +87,7 @@ function initMap() {
   });
   map.on("style.load", restoreLayersAfterStyleChange);
   initZoomSlider();
+  document.querySelector("#reset-view").addEventListener("click", resetView);
 
   map.on("click", () => {
     if (suppressMapClick) return;
@@ -97,13 +97,33 @@ function initMap() {
 
 function initZoomSlider() {
   const slider = document.querySelector("#zoom-slider");
+  let dragging = false;
   slider.value = map.getZoom();
+  slider.addEventListener("pointerdown", () => {
+    dragging = true;
+  });
+  window.addEventListener("pointerup", () => {
+    dragging = false;
+    slider.value = map.getZoom();
+  });
   slider.addEventListener("input", () => {
+    map.stop();
     map.setZoom(Number(slider.value));
   });
   map.on("zoom", () => {
-    slider.value = map.getZoom();
+    if (!dragging) slider.value = map.getZoom();
   });
+}
+
+function resetView() {
+  if (flyByTimer) {
+    clearTimeout(flyByTimer);
+    flyByTimer = null;
+  }
+  document.querySelectorAll(".mapboxgl-popup").forEach((popup) => popup.remove());
+  clearSelectedOverlap();
+  endFlyby();
+  map.flyTo({ ...defaultView, duration: 1100, essential: true });
 }
 
 function initBasemapControls() {
