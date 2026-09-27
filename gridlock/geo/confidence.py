@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from overlap import haversine_miles
-from geocode import border_distance_mi
+from geocode import border_distance_mi, max_plausible_miles
 
 
 OPERATORS = {
@@ -48,10 +48,9 @@ def score_project(project: dict, matches: dict) -> dict:
     result = dict(project)
     required = ["a"] + (["b"] if project.get("endpoint_b") else [])
     score = sum(endpoint_confidence(matches.get(s), project["utility"], project["state"]) for s in required) / len(required)
-    if matches.get("a") and matches.get("b") and project.get("length_mi"):
+    if matches.get("a") and matches.get("b"):
         straight = haversine_miles(project["lat_a"], project["lon_a"], project["lat_b"], project["lon_b"])
-        stated = float(project["length_mi"])
-        if stated > 0 and straight > max(stated * 3, stated + 10):
+        if straight > max_plausible_miles(project):
             score *= 0.25
     score = round(score, 3)
     result["confidence"] = score

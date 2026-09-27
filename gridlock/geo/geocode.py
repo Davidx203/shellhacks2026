@@ -120,12 +120,12 @@ def fetch_substations(cache: Path = CACHE) -> list[dict]:
     return _annotate_states(features, cache)
 
 
-def match_endpoint(name: str, features: list[dict], expected_state: str, utility: str) -> dict | None:
+def candidate_matches(name: str, features: list[dict], expected_state: str, utility: str, limit: int = 6) -> list[dict]:
+    """Best-scoring OSM substations for a name, highest score first."""
     normalized = normalize_name(name)
     if not normalized:
-        return None
-    best = None
-    best_score = -1
+        return []
+    found = []
     for feature in features:
         props = feature["properties"]
         if props.get("gridlock_state") != expected_state:
@@ -141,20 +141,74 @@ def match_endpoint(name: str, features: list[dict], expected_state: str, utility
         # NORTH versus NORTH DUBLIN. Require the whole names to resemble each other.
         if fuzz.ratio(normalized, candidate) < 65:
             continue
-        if score > best_score:
-            best, best_score = feature, score
-    if best_score < MIN_NAME_SCORE:
-        return None
-    return {"feature": best, "name_score": best_score}
+        if score >= MIN_NAME_SCORE:
+            found.append({"feature": feature, "name_score": score})
+    found.sort(key=lambda item: -item["name_score"])
+    return found[:limit]
+
+
+def match_endpoint(name: str, features: list[dict], expected_state: str, utility: str) -> dict | None:
+    found = candidate_matches(name, features, expected_state, utility, limit=1)
+    return found[0] if found else None
+
+
+MAX_LINE_MI_BY_KV = {46: 40, 69: 50, 115: 60, 138: 70, 230: 90, 500: 150}
+SAVANNAH = (32.08, -81.09)
+AREA_HINTS = {"SAV:": (SAVANNAH, 70)}
+
+
+def max_plausible_miles(project: dict) -> float:
+    """Longest straight-line separation we accept between a line's two endpoints."""
+    if project.get("length_mi"):
+        stated = float(project["length_mi"])
+        return max(stated * 3, stated + 10)
+    kv = int(project["voltage_kv"]) if str(project.get("voltage_kv") or "").isdigit() else 0
+    return MAX_LINE_MI_BY_KV.get(kv, 100)
+
+
+def _in_hint_area(project: dict, candidates: list[dict]) -> list[dict]:
+    """Keep candidates near the area named by a project prefix (SAV: = Savannah); no-op if none qualify."""
+    for prefix, ((lat, lon), radius) in AREA_HINTS.items():
+        if project["project_name"].upper().startswith(prefix):
+            near = [c for c in candidates
+                    if haversine_miles(lat, lon, c["feature"]["geometry"]["coordinates"][1],
+                                       c["feature"]["geometry"]["coordinates"][0]) <= radius]
+            return near or candidates
+    return candidates
+
+
+def choose_pair(project: dict, cands_a: list[dict], cands_b: list[dict]) -> tuple[dict | None, dict | None]:
+    """Pick the endpoint pair that forms a plausible line; fall back to the best names."""
+    limit = max_plausible_miles(project)
+    best = None
+    for a in cands_a:
+        for b in cands_b:
+            if a["feature"] is b["feature"]:
+                continue
+            (lon_a, lat_a), (lon_b, lat_b) = a["feature"]["geometry"]["coordinates"], b["feature"]["geometry"]["coordinates"]
+            sep = haversine_miles(lat_a, lon_a, lat_b, lon_b)
+            plausible = sep <= limit
+            key = (plausible, a["name_score"] + b["name_score"], -sep)
+            if best is None or key > best[0]:
+                best = (key, a, b)
+    if best is None:
+        return (cands_a[0] if cands_a else None), (cands_b[0] if cands_b else None)
+    return best[1], best[2]
 
 
 def geocode_project(project: dict, features: list[dict]) -> tuple[dict, dict]:
     result = dict(project)
-    matches = {}
+    cands = {}
     for suffix in ("a", "b"):
         name = project.get(f"endpoint_{suffix}", "")
-        match = match_endpoint(name, features, project["state"], project["utility"]) if name else None
-        matches[suffix] = match
+        found = candidate_matches(name, features, project["state"], project["utility"]) if name else []
+        cands[suffix] = _in_hint_area(project, found)
+    if cands["a"] and cands["b"]:
+        matches = dict(zip(("a", "b"), choose_pair(project, cands["a"], cands["b"])))
+    else:
+        matches = {s: (cands[s][0] if cands[s] else None) for s in ("a", "b")}
+    for suffix in ("a", "b"):
+        match = matches[suffix]
         coords = match["feature"]["geometry"]["coordinates"] if match else None
         result[f"lat_{suffix}"] = coords[1] if coords else ""
         result[f"lon_{suffix}"] = coords[0] if coords else ""
