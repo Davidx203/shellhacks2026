@@ -12,9 +12,6 @@ let overlaps = [];
 let selectedOverlapId = null;
 let distanceMarker = null;
 let flyByTimer = null;
-let orbitFrame = null;
-let orbitLastTime = null;
-let orbitBearing = 0;
 let suppressMapClick = false;
 let currentCameraIndex = 1;
 let listFilters = {
@@ -621,7 +618,7 @@ function selectOverlap(overlap) {
 
 function clearSelectedOverlap() {
   if (!selectedOverlapId) return;
-  stopCameraOrbit();
+  endFlyby();
   selectedOverlapId = null;
   updateOverlapVisibility();
   updateProjectVisibility(null);
@@ -796,7 +793,7 @@ function removeDistanceLabel() {
 }
 
 function flyToOpportunity(gpc, desc) {
-  stopCameraOrbit();
+  endFlyby();
   if (flyByTimer) clearTimeout(flyByTimer);
   const bounds = new mapboxgl.LngLatBounds(lngLat(gpc), lngLat(gpc));
   bounds.extend(lngLat(desc));
@@ -826,13 +823,13 @@ function flyToOpportunity(gpc, desc) {
     });
     flyByTimer = setTimeout(() => {
       flyByTimer = null;
-      startCameraOrbit(finalBearing);
+      endFlyby();
     }, 1850);
   }, 620);
 }
 
 function flyToSite(site, other, bearingOffset) {
-  stopCameraOrbit();
+  endFlyby();
   if (flyByTimer) clearTimeout(flyByTimer);
   const bearing = bearingBetween(site, other) + bearingOffset;
   map.getContainer().classList.add("flyby-active");
@@ -846,38 +843,11 @@ function flyToSite(site, other, bearingOffset) {
   });
   flyByTimer = setTimeout(() => {
     flyByTimer = null;
-    startCameraOrbit(bearing);
+    endFlyby();
   }, 1500);
 }
 
-function startCameraOrbit(startBearing) {
-  stopCameraOrbit();
-  orbitBearing = startBearing;
-  orbitLastTime = null;
-  map.getContainer().classList.add("flyby-active");
-
-  function orbit(time) {
-    if (!selectedOverlapId) {
-      stopCameraOrbit();
-      return;
-    }
-    if (orbitLastTime === null) orbitLastTime = time;
-    const elapsedSeconds = (time - orbitLastTime) / 1000;
-    orbitLastTime = time;
-    orbitBearing += elapsedSeconds * 7.5;
-    map.setBearing(orbitBearing);
-    orbitFrame = requestAnimationFrame(orbit);
-  }
-
-  orbitFrame = requestAnimationFrame(orbit);
-}
-
-function stopCameraOrbit() {
-  if (orbitFrame) {
-    cancelAnimationFrame(orbitFrame);
-    orbitFrame = null;
-  }
-  orbitLastTime = null;
+function endFlyby() {
   map?.getContainer().classList.remove("flyby-active");
 }
 
