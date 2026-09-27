@@ -777,12 +777,24 @@ path.pulse-line {
 .cost-inputs input {
   display: block;
   width: 100%;
+  height: 36px;
   margin-top: 4px;
-  padding: 7px 8px;
+  padding: 0 9px;
   border: 1px solid var(--line);
-  border-radius: 6px;
+  border-radius: 8px;
   box-sizing: border-box;
-  font: inherit;
+  color: var(--ink);
+  font-family: inherit;
+  font-size: 0.88rem;
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: normal;
+}
+
+.cost-inputs input:focus {
+  border-color: rgba(23, 150, 83, 0.7);
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(23, 150, 83, 0.12);
 }
 
 .cost-assumptions {
