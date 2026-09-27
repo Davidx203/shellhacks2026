@@ -26,3 +26,13 @@ from pipeline.classify import classify
 ])
 def test_classify(name, expected):
     assert classify(name) == expected
+
+
+from pipeline.classify import finalize_row
+
+
+def test_finalize_row_sets_type_and_clears_endpoint_b_for_relay():
+    relay = finalize_row({"project_name": "SCOTTDALE RELAY MODERNIZATION", "endpoint_b": "X"})
+    assert relay["project_type"] == "relay" and relay["endpoint_b"] == ""
+    line = finalize_row({"project_name": "OKATIE - BLUFFTON 115KV REBUILD", "endpoint_b": "BLUFFTON"})
+    assert line["project_type"] == "rebuild" and line["endpoint_b"] == "BLUFFTON"

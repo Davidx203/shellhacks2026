@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import os
 import sqlite3
 from pathlib import Path
 
@@ -49,10 +50,24 @@ def main() -> None:
     args = parser.parse_args()
 
     source_dir = ROOT / "data" / args.source
-    with sqlite3.connect(DB_PATH) as conn:
-        load_csv(conn, "projects", source_dir / "projects.csv")
-        load_csv(conn, "overlaps", source_dir / "overlaps.csv")
-        load_csv(conn, "briefs", source_dir / "briefs.csv")
+    # Build the new database beside the live one and swap it in, so readers never see half-loaded tables.
+    tmp_path = DB_PATH.with_name(DB_PATH.name + ".tmp")
+    if tmp_path.exists():
+        tmp_path.unlink()
+    try:
+        conn = sqlite3.connect(tmp_path)
+        try:
+            with conn:
+                load_csv(conn, "projects", source_dir / "projects.csv")
+                load_csv(conn, "overlaps", source_dir / "overlaps.csv")
+                load_csv(conn, "briefs", source_dir / "briefs.csv")
+        finally:
+            conn.close()
+        os.replace(tmp_path, DB_PATH)
+    except BaseException:
+        if tmp_path.exists():
+            tmp_path.unlink()
+        raise
     print(f"Loaded {args.source} CSVs into {DB_PATH}")
 
 

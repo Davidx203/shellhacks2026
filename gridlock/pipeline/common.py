@@ -7,6 +7,11 @@ COLUMNS = [
     "voltage_kv", "project_type", "length_mi", "est_cost_usd", "start_date",
     "in_service_date", "build_start", "build_end", "source_file", "source_ref",
 ]
+RAW_EXTRA = [
+    "origin", "submission_id", "submitted_by", "submitted_at",
+    "given_lat_a", "given_lon_a", "given_lat_b", "given_lon_b",
+]
+RAW_COLUMNS = COLUMNS + RAW_EXTRA
 
 _DATE = re.compile(r"\b(\d{1,2})/(\d{1,2})/(\d{2}|\d{4})\b")
 _KV = re.compile(r"(\d+(?:\.\d+)?)(?:\s*[-/]\s*(\d+(?:\.\d+)?))*\s*kv\b", re.I)
