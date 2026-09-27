@@ -277,3 +277,59 @@ def test_ambiguous_numbers_are_errors_not_silently_reinterpreted(field, value):
     row, errors = prepare_form({**FORM, field: value})
     assert any(field in e for e in errors), (field, value, errors)
     assert row[field] == ""
+
+
+# ---- review fixes: atomic commit, reserved ids -------------------------------------------
+
+def form_row(**over):
+    row, errors = prepare_form({**FORM, **over})
+    assert errors == [], errors
+    return row
+
+
+def test_commit_rows_skips_a_repeat_without_waiting_for_any_rebuild(tmp_path):
+    path = tmp_path / "s.csv"
+    baseline = [report()]
+    change = {**clean_row(report(project_name="Hooks - Thurmond 115kV Tie: Rebuild")), "in_service_date": "2025-06-01"}
+    ids, skipped = store.commit_rows([change], "pdf", "x", baseline, path=path)
+    assert len(ids) == 1 and skipped == []
+    ids, skipped = store.commit_rows([change], "pdf", "x", baseline, path=path)      # same body again, double click
+    assert ids == [] and skipped == [{"project_id": "DESC_1", "reason": "unchanged"}]
+    assert len(read_submissions(path)) == 1
+
+
+def test_commit_rows_refuses_a_row_whose_status_changed_since_its_preview(tmp_path):
+    path = tmp_path / "s.csv"
+    first, second = form_row(project_name="First - Project 115kV: Rebuild"), form_row(project_name="Second - Project 115kV: Rebuild")
+    assert first["project_id"] == second["project_id"] == "GPC_SUB1"                 # two previews before either commit
+    ids, _ = store.commit_rows([first], "form", "a", [], expected={"GPC_SUB1": "new"}, path=path)
+    assert len(ids) == 1
+    ids, skipped = store.commit_rows([second], "form", "b", [], expected={"GPC_SUB1": "new"}, path=path)
+    assert ids == [] and "changed since your preview" in skipped[0]["reason"]
+    assert [r["project_name"] for r in read_submissions(path)] == ["First - Project 115kV: Rebuild"]
+
+
+def test_reserved_ids_include_rejected_submissions_so_ids_are_never_reused(tmp_path):
+    path = tmp_path / "s.csv"
+    ids, _ = store.commit_rows([form_row()], "form", "a", [], path=path)
+    set_status(ids[0], "rejected", path)
+    assert "GPC_SUB1" in store.reserved_ids([], path)
+    assert prepare_form(FORM, taken_ids=store.reserved_ids([], path))[0]["project_id"] == "GPC_SUB2"
+
+
+def test_current_state_is_baseline_plus_active_submissions(tmp_path):
+    path = tmp_path / "s.csv"
+    ids, _ = store.commit_rows([{**clean_row(report()), "in_service_date": "2030-01-01"}], "pdf", "a", [report()], path=path)
+    assert store.current_by_id([report()], path)["DESC_1"]["in_service_date"] == "2030-01-01"
+    set_status(ids[0], "rejected", path)
+    assert store.current_by_id([report()], path)["DESC_1"]["in_service_date"] == "2024-12-31"
+
+
+def test_concurrent_identical_commits_save_exactly_one_revision(tmp_path):
+    path = tmp_path / "s.csv"
+    row = {**clean_row(report()), "in_service_date": "2031-01-01"}
+    saved = []
+    threads = [threading.Thread(target=lambda: saved.append(len(store.commit_rows([row], "pdf", "x", [report()], path=path)[0]))) for _ in range(8)]
+    [t.start() for t in threads]
+    [t.join() for t in threads]
+    assert sorted(saved) == [0] * 7 + [1] and len(read_submissions(path)) == 1

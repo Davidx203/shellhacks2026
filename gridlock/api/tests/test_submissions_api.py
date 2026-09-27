@@ -7,7 +7,7 @@ from fastapi.testclient import TestClient
 
 from api import submissions
 from api.main import app
-from pipeline.common import RAW_COLUMNS
+from pipeline.common import COLUMNS
 
 DESC_PAGE = """Project 43 of 44
 Dominion Energy South Carolina
@@ -59,7 +59,7 @@ class FakeRebuilder:
 @pytest.fixture
 def client(tmp_path, monkeypatch):
     monkeypatch.setattr(submissions, "SUBMISSIONS_PATH", tmp_path / "submissions.csv")
-    monkeypatch.setattr(submissions, "RAW_PROJECTS_PATH", tmp_path / "projects_raw.csv")
+    monkeypatch.setattr(submissions, "BASELINE_PATH", tmp_path / "projects_report.csv")
     monkeypatch.setattr(submissions, "rebuilder", FakeRebuilder())
     return TestClient(app)
 
@@ -73,14 +73,14 @@ def make_pdf(text):
 
 
 def write_current(path, **row):
-    base = dict.fromkeys(RAW_COLUMNS, "")
+    base = dict.fromkeys(COLUMNS, "")
     base.update(project_id="DESC_6810O", utility="DESC", state="SC", project_name="Urquhart - Aiken PSA 46 kV: Rebuild",
                 endpoint_a="Urquhart", endpoint_b="Aiken PSA", voltage_kv="46", project_type="rebuild",
                 length_mi="4.5", est_cost_usd="3000000", in_service_date="2027-12-31",
-                build_start="2027-01-01", build_end="2027-12-31", origin="report")
+                build_start="2027-01-01", build_end="2027-12-31")
     base.update(row)
     with path.open("w", newline="", encoding="utf-8") as f:
-        writer = csv.DictWriter(f, fieldnames=RAW_COLUMNS)
+        writer = csv.DictWriter(f, fieldnames=COLUMNS)
         writer.writeheader()
         writer.writerow(base)
 
@@ -100,14 +100,14 @@ def test_pdf_preview_marks_a_new_project(client):
 
 
 def test_pdf_preview_marks_an_update_with_its_changes(client, tmp_path):
-    write_current(tmp_path / "projects_raw.csv", in_service_date="2026-06-30")
+    write_current(tmp_path / "projects_report.csv", in_service_date="2026-06-30")
     entry = post_pdf(client, make_pdf(DESC_PAGE)).json()["rows"][0]
     assert entry["status"] == "update"
     assert entry["changes"]["in_service_date"] == ["2026-06-30", "2027-12-31"]
 
 
 def test_pdf_preview_marks_an_identical_project_unchanged(client, tmp_path):
-    write_current(tmp_path / "projects_raw.csv")
+    write_current(tmp_path / "projects_report.csv")
     entry = post_pdf(client, make_pdf(DESC_PAGE)).json()["rows"][0]
     assert entry["status"] == "unchanged"
 
@@ -183,7 +183,7 @@ def test_commit_rejects_duplicates_within_one_request_and_wrong_utility(client):
 
 
 def test_commit_of_unchanged_or_empty_is_a_422_that_saves_nothing(client, tmp_path):
-    write_current(tmp_path / "projects_raw.csv")
+    write_current(tmp_path / "projects_report.csv")
     row = post_pdf(client, make_pdf(DESC_PAGE)).json()["rows"][0]["row"]
     response = client.post("/submissions/commit", json={"utility": "DESC", "origin": "pdf", "submitted_by": "", "rows": [row]})
     assert response.status_code == 422 and response.json()["detail"]["skipped"][0]["reason"] == "unchanged"
@@ -222,3 +222,37 @@ def test_jobs_and_manual_rebuild(client):
     assert client.get("/submissions/jobs/unknown").status_code == 404
     job = client.post("/submissions/rebuild").json()["job_id"]
     assert client.get(f"/submissions/jobs/{job}").json() == {"status": "done", "message": ""}
+
+
+# ---- review fixes: double commit, id reuse, stale previews -----------------------------------
+
+def test_committing_the_same_body_twice_saves_one_revision(client):
+    body = commit_body(client)
+    assert client.post("/submissions/commit", json=body).status_code == 200
+    again = client.post("/submissions/commit", json=body)
+    assert again.status_code == 422 and again.json()["detail"]["skipped"][0]["reason"] == "unchanged"
+    assert len(client.get("/submissions").json()) == 1
+    assert submissions.rebuilder.requests == 1
+
+
+def test_preview_after_a_commit_sees_it_without_waiting_for_a_rebuild(client):
+    client.post("/submissions/commit", json=commit_body(client))
+    assert client.post("/submissions/preview/form", json=FORM).json()["rows"][0]["row"]["project_id"] == "GPC_SUB2"
+
+
+def test_a_rejected_submissions_id_is_never_handed_out_again(client):
+    client.post("/submissions/commit", json=commit_body(client))
+    submission_id = client.get("/submissions").json()[0]["submission_id"]
+    client.post(f"/submissions/{submission_id}/reject")
+    assert client.post("/submissions/preview/form", json=FORM).json()["rows"][0]["row"]["project_id"] == "GPC_SUB2"
+
+
+def test_a_stale_preview_cannot_fuse_two_projects_under_one_id(client):
+    first = client.post("/submissions/preview/form", json={**FORM, "project_name": "First - One 115kV: Rebuild"}).json()["rows"][0]
+    second = client.post("/submissions/preview/form", json={**FORM, "project_name": "Second - Two 115kV: Rebuild"}).json()["rows"][0]
+    assert first["row"]["project_id"] == second["row"]["project_id"] == "GPC_SUB1"
+    ok = client.post("/submissions/commit", json={"utility": "GPC", "origin": "form", "submitted_by": "", "rows": [first["row"]], "expected": {"GPC_SUB1": "new"}})
+    assert ok.status_code == 200
+    stale = client.post("/submissions/commit", json={"utility": "GPC", "origin": "form", "submitted_by": "", "rows": [second["row"]], "expected": {"GPC_SUB1": "new"}})
+    assert stale.status_code == 422 and "changed since your preview" in stale.json()["detail"]["skipped"][0]["reason"]
+    assert [h["project_name"] for h in client.get("/submissions").json()] == ["First - One 115kV: Rebuild"]

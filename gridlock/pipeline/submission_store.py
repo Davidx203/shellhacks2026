@@ -304,22 +304,67 @@ def _write_all(path, rows):
         raise
 
 
+def _stamp(rows, origin, submitted_by, existing, now):
+    ids = []
+    for row in rows:
+        entry = dict.fromkeys(SUBMISSION_COLUMNS, "")
+        entry.update({k: v for k, v in row.items() if k in SUBMISSION_COLUMNS})
+        submission_id = "sub_" + secrets.token_hex(4)
+        entry.update(submission_id=submission_id, origin=origin, submitted_by=_text(submitted_by),
+                     submitted_at=now, status="active")
+        existing.append(entry)
+        ids.append(submission_id)
+    return ids
+
+
+def _now():
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
+
+
 def append_submissions(rows, origin, submitted_by, path=None):
     path = _resolve(path)
-    now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
-    ids = []
     with _locked(path):
         existing = read_submissions(path)
-        for row in rows:
-            entry = dict.fromkeys(SUBMISSION_COLUMNS, "")
-            entry.update({k: v for k, v in row.items() if k in SUBMISSION_COLUMNS})
-            submission_id = "sub_" + secrets.token_hex(4)
-            entry.update(submission_id=submission_id, origin=origin, submitted_by=_text(submitted_by),
-                         submitted_at=now, status="active")
-            existing.append(entry)
-            ids.append(submission_id)
+        ids = _stamp(rows, origin, submitted_by, existing, _now())
         _write_all(path, existing)
     return ids
+
+
+def current_by_id(baseline_rows, path=None):
+    """What exists right now: the report baseline with every active submission laid over it."""
+    return {row["project_id"]: row for row in merge_rows(baseline_rows, read_submissions(path))}
+
+
+def reserved_ids(baseline_rows, path=None):
+    """Every project id ever used, including rejected submissions, so generated ids are never reused."""
+    return {row["project_id"] for row in baseline_rows} | {row["project_id"] for row in read_submissions(path)}
+
+
+def commit_rows(rows, origin, submitted_by, baseline_rows, expected=None, path=None):
+    """Diff and append in one locked step. Returns (submission_ids, skipped).
+
+    A row is skipped when it changes nothing (a repeat or double click) or when its status is no longer
+    what the submitter saw in the preview (someone else took the id or changed the project meanwhile).
+    """
+    path = _resolve(path)
+    expected = expected or {}
+    to_add, skipped = [], []
+    with _locked(path):
+        existing = read_submissions(path)
+        current = {row["project_id"]: row for row in merge_rows(baseline_rows, existing)}
+        for row in rows:
+            project_id, status = row["project_id"], diff(row, current)["status"]
+            if status == "unchanged":
+                skipped.append({"project_id": project_id, "reason": "unchanged"})
+            elif expected.get(project_id) and expected[project_id] != status:
+                skipped.append({"project_id": project_id, "reason": (
+                    f"changed since your preview (it was {expected[project_id]}, it is now {status}); preview again")})
+            else:
+                to_add.append(row)
+        ids = _stamp(to_add, origin, submitted_by, existing, _now()) if to_add else []
+        if ids:
+            _write_all(path, existing)
+    return ids, skipped
 
 
 def set_status(submission_id, status, path=None):

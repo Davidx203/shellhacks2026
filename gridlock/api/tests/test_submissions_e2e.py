@@ -77,7 +77,7 @@ def world(tmp_path, monkeypatch):
     rebuilder = InProcessRebuilder(baseline, log, out)
     rebuilder.request()                                    # the state before any submission
     monkeypatch.setattr(submissions, "SUBMISSIONS_PATH", log)
-    monkeypatch.setattr(submissions, "RAW_PROJECTS_PATH", out)
+    monkeypatch.setattr(submissions, "BASELINE_PATH", baseline)
     monkeypatch.setattr(submissions, "rebuilder", rebuilder)
     return TestClient(app), out
 

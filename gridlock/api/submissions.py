@@ -11,12 +11,12 @@ from pydantic import BaseModel
 from api.rebuild import Rebuilder
 from pipeline.pdf_submission import MAX_BYTES, UTILITY_NAMES, FileTooLarge, SubmissionError, read_pdf
 from pipeline.submission_store import (
-    append_submissions, clean_row, diff, history, prepare_form, set_status, validate_submission,
+    clean_row, commit_rows, current_by_id, diff, history, prepare_form, reserved_ids, set_status, validate_submission,
 )
 
 ROOT = Path(__file__).resolve().parents[1]
 SUBMISSIONS_PATH = ROOT / "data" / "interim" / "submissions.csv"
-RAW_PROJECTS_PATH = ROOT / "data" / "interim" / "projects_raw.csv"
+BASELINE_PATH = ROOT / "data" / "interim" / "projects_report.csv"
 rebuilder = Rebuilder()
 
 router = APIRouter(prefix="/submissions", tags=["submissions"])
@@ -29,11 +29,16 @@ def _utility(value: str) -> str:
     return utility
 
 
+def _baseline_rows() -> list[dict]:
+    if not BASELINE_PATH.exists():
+        return []
+    with BASELINE_PATH.open(newline="", encoding="utf-8") as handle:
+        return list(csv.DictReader(handle))
+
+
 def _current_by_id() -> dict[str, dict]:
-    if not RAW_PROJECTS_PATH.exists():
-        return {}
-    with RAW_PROJECTS_PATH.open(newline="", encoding="utf-8") as handle:
-        return {row["project_id"]: row for row in csv.DictReader(handle)}
+    """The report baseline with every active submission laid over it: the truth, not the last rebuild's output."""
+    return current_by_id(_baseline_rows(), SUBMISSIONS_PATH)
 
 
 def _entry(row: dict, errors: list[str], current: dict) -> dict:
@@ -64,7 +69,7 @@ async def preview_pdf(utility: str = Form(...), file: UploadFile = File(...)) ->
 @router.post("/preview/form")
 def preview_form(payload: dict) -> dict:
     current = _current_by_id()
-    row, errors = prepare_form(payload, taken_ids=set(current))
+    row, errors = prepare_form(payload, taken_ids=reserved_ids(_baseline_rows(), SUBMISSIONS_PATH))
     if not row:
         raise HTTPException(status_code=422, detail="; ".join(errors))
     return {"utility": row["utility"], "origin": "form", "rows": [_entry(row, errors, current)]}
@@ -75,12 +80,13 @@ class CommitBody(BaseModel):
     origin: Literal["pdf", "form"]
     submitted_by: str = ""
     rows: list[dict]
+    expected: dict[str, str] = {}      # project_id -> the status the submitter saw in the preview
 
 
 @router.post("/commit")
 def commit(body: CommitBody) -> dict:
     utility = _utility(body.utility)
-    current, seen, to_save, skipped = _current_by_id(), set(), [], []
+    seen, valid, skipped = set(), [], []
     for raw in body.rows:
         row = clean_row(raw)
         project_id = row["project_id"]
@@ -92,16 +98,15 @@ def commit(body: CommitBody) -> dict:
         seen.add(project_id)
         if errors:
             skipped.append({"project_id": project_id, "reason": "; ".join(errors)})
-            continue
-        if diff(row, current)["status"] == "unchanged":
-            skipped.append({"project_id": project_id, "reason": "unchanged"})
-            continue
-        to_save.append(row)
-    if not to_save:
-        raise HTTPException(status_code=422, detail={"message": "Nothing to save.", "skipped": skipped})
+        else:
+            valid.append(row)
     company = UTILITY_NAMES[utility]
     note = " ".join(body.submitted_by.split())
-    ids = append_submissions(to_save, body.origin, f"{company} ({note})" if note else company, SUBMISSIONS_PATH)
+    ids, not_saved = commit_rows(valid, body.origin, f"{company} ({note})" if note else company,
+                                 _baseline_rows(), expected=body.expected, path=SUBMISSIONS_PATH)
+    skipped += not_saved
+    if not ids:
+        raise HTTPException(status_code=422, detail={"message": "Nothing to save.", "skipped": skipped})
     return {"saved": ids, "skipped": skipped, "job_id": rebuilder.request()}
 
 
