@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import csv
+import json
 import sqlite3
 from pathlib import Path
 from typing import Any
@@ -59,6 +60,14 @@ def get_projects(utility: str | None = None, min_confidence: float | None = None
         params.append(min_confidence)
     sql += " ORDER BY utility, project_id"
     return rows(sql, tuple(params))
+
+
+@app.get("/routes")
+def get_routes() -> dict[str, Any]:
+    path = ROOT / "data" / "processed" / "routes.geojson"
+    if not path.exists():
+        return {"type": "FeatureCollection", "features": []}
+    return json.loads(path.read_text(encoding="utf-8"))
 
 
 @app.get("/overlaps")

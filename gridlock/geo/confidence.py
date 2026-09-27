@@ -54,9 +54,22 @@ def score_project(project: dict, matches: dict) -> dict:
             score *= 0.25
     score = round(score, 3)
     result["confidence"] = score
-    result["confidence_tier"] = (
-        "unmatched" if not any(matches.get(s) for s in required) else
-        "high" if score >= 0.8 else "medium" if score >= 0.5 else "low"
-    )
+    result["confidence_tier"] = tier_for(score, any(matches.get(s) for s in required))
     result["human_verified"] = "false"
     return result
+
+
+def tier_for(score: float, any_match: bool) -> str:
+    return "unmatched" if not any_match else "high" if score >= 0.8 else "medium" if score >= 0.5 else "low"
+
+
+def apply_route_evidence(project: dict) -> None:
+    """A route along same-voltage lines matching any stated length is evidence the pair is right."""
+    if project.get("route_mi") in ("", None) or project["confidence_tier"] == "unmatched":
+        return
+    route = float(project["route_mi"])
+    stated = float(project["length_mi"]) if project.get("length_mi") else None
+    if stated and not (0.5 * stated <= route <= 2 * stated):
+        return
+    project["confidence"] = round(min(1.0, float(project["confidence"]) + 0.1), 3)
+    project["confidence_tier"] = tier_for(project["confidence"], True)

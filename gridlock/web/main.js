@@ -26,6 +26,7 @@ const substationMarkers = new Map();
 const opportunityCaps = new Map();
 const opportunityCapPoints = new Map();
 const overlapsById = new Map();
+const routesByProject = new Map();
 
 const emptyFeatureCollection = {
   type: "FeatureCollection",
@@ -297,10 +298,12 @@ function projectLineFeatures() {
   return projects.flatMap((project) => {
     const pts = endpoints(project);
     if (!pts) return [];
+    const route = routesByProject.get(project.project_id);
     return [
       {
         type: "Feature",
         properties: {
+          route_mi: route ? route.route_mi : "",
           project_id: project.project_id,
           project_name: project.project_name,
           utility: project.utility,
@@ -311,7 +314,7 @@ function projectLineFeatures() {
         },
         geometry: {
           type: "LineString",
-          coordinates: pts.map(lngLat),
+          coordinates: route ? route.coordinates : pts.map(lngLat),
         },
       },
     ];
@@ -442,6 +445,7 @@ function bindMapLayerEvents() {
         ${props.utility} · ${props.voltage_kv} kV<br>
         In service: ${props.in_service_date}<br>
         Confidence: ${props.confidence_tier}<br>
+        ${props.route_mi ? `Route along power line: ${props.route_mi} mi<br>` : ""}
         Source: ${props.source_ref}
       `)
       .addTo(map);
@@ -905,6 +909,18 @@ async function load() {
   if (!projectsRes.ok || !overlapsRes.ok) throw new Error("API request failed");
   projects = await projectsRes.json();
   overlaps = await overlapsRes.json();
+  routesByProject.clear();
+  try {
+    const routesRes = await fetch(`${API}/routes`);
+    if (routesRes.ok) {
+      (await routesRes.json()).features.forEach((feature) => {
+        routesByProject.set(feature.properties.project_id, {
+          route_mi: feature.properties.route_mi,
+          coordinates: feature.geometry.coordinates,
+        });
+      });
+    }
+  } catch {}
   overlaps.forEach((overlap) => overlapsById.set(overlap.overlap_id, overlap));
 
   buildSubstationGroups();

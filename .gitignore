@@ -7,3 +7,4 @@ venv
 .venv
 gridlock/data/raw/gpc_irp_vol3.txt
 gridlock/data/raw/desc_pages/
+gridlock/data/cache/power_lines_ga_sc.json
