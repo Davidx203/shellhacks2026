@@ -7,8 +7,8 @@ const CURRENT_YEAR = new Date().getFullYear();
 const MAX_DISTANCE_MI = 25;
 const TIME_WINDOW_DAYS = 1825;
 const COORDINATION_SCORE = 0.35;
-const SLIDE_EXIT_MS = 540;
-const SLIDE_ENTER_MS = 760;
+const SLIDE_EXIT_MS = 1050;
+const SLIDE_ENTER_MS = 1800;
 const THEME_CLASSES = [
   "theme-aqua",
   "theme-amber",
@@ -20,6 +20,18 @@ const THEME_CLASSES = [
   "theme-cyan",
   "theme-magenta",
   "theme-white",
+];
+const TRANSITION_CLASSES = [
+  "transition-surge",
+  "transition-pop",
+  "transition-rise",
+  "transition-connect",
+  "transition-drift",
+  "transition-map",
+  "transition-spotlight",
+  "transition-reveal",
+  "transition-stamp",
+  "transition-settle",
 ];
 
 const UTILITY_LABELS = {
@@ -249,12 +261,39 @@ function renderCurrentSlide(direction = "next", unlockAfterEntry = false) {
   const count = document.querySelector("#slide-count");
   const story = document.querySelector(".story-view");
 
-  story?.classList.remove(...THEME_CLASSES);
-  story?.classList.add(`theme-${slide.theme}`);
+  story?.classList.remove(...THEME_CLASSES, ...TRANSITION_CLASSES);
+  story?.classList.add(`theme-${slide.theme}`, `transition-${slide.motion}`);
 
   panel.innerHTML = `
     <div class="slide is-entering enter-${direction} motion-${escapeHtml(slide.motion)} theme-${escapeHtml(slide.theme)}">
       <div class="background-word" aria-hidden="true">${escapeHtml(slide.backgroundWord)}</div>
+      <div class="electric-field" aria-hidden="true">
+        <svg class="lightning-net" viewBox="0 0 100 100" preserveAspectRatio="none" focusable="false">
+          <path class="wire wire-a" d="M-8 24 L12 20 L20 31 L34 19 L49 33 L63 25 L78 36 L108 28"></path>
+          <path class="wire wire-b" d="M-6 78 L11 69 L26 76 L38 58 L54 67 L66 49 L83 56 L106 38"></path>
+          <path class="wire wire-c" d="M5 8 L18 14 L28 7 L41 16 L55 9 L69 18 L84 10 L98 17"></path>
+          <path class="strike strike-a" d="M80 -4 L65 27 L79 27 L52 67 L61 40 L47 40"></path>
+          <path class="strike strike-b" d="M12 37 L25 37 L18 55 L34 55 L9 94 L18 65 L7 65"></path>
+          <path class="strike strike-c" d="M51 96 L61 72 L50 72 L70 42 L64 64 L77 64"></path>
+          <circle class="node node-a" cx="20" cy="31" r="2.3"></circle>
+          <circle class="node node-b" cx="54" cy="67" r="2.3"></circle>
+          <circle class="node node-c" cx="78" cy="36" r="2.3"></circle>
+        </svg>
+        <span class="shock-ring shock-ring-1"></span>
+        <span class="shock-ring shock-ring-2"></span>
+        <span class="bolt bolt-main"></span>
+        <span class="bolt bolt-small"></span>
+        <span class="spark spark-1"></span>
+        <span class="spark spark-2"></span>
+        <span class="spark spark-3"></span>
+        <span class="spark spark-4"></span>
+        <span class="spark spark-5"></span>
+        <span class="spark spark-6"></span>
+        <span class="spark spark-7"></span>
+        <span class="spark spark-8"></span>
+        <span class="spark spark-9"></span>
+        <span class="spark spark-10"></span>
+      </div>
       <div class="slide-topline">
         <span>${escapeHtml(state.model.utilityLabel)} / ${state.model.year}</span>
         <span>${escapeHtml(slide.kicker)}</span>
@@ -304,6 +343,10 @@ function transitionToSlide(targetIndex, direction) {
 
   state.isTransitioning = true;
   setStoryControlsLocked(true);
+  const story = document.querySelector(".story-view");
+  const targetSlide = state.slides[targetIndex];
+  story?.classList.remove(...TRANSITION_CLASSES);
+  story?.classList.add(`transition-${targetSlide.motion}`);
   const panel = document.querySelector("#story-panel");
   const current = panel?.querySelector(".slide");
   current?.classList.remove("is-entering", "enter-next", "enter-prev");
