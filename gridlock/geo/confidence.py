@@ -7,6 +7,7 @@ from geocode import border_distance_mi, max_plausible_miles
 
 
 INFERRED_CEILING = 0.79   # an inferred endpoint can never make a project "high"
+SUBMISSION_CEILING = 0.6   # an unverified submission is "medium" at best
 
 OPERATORS = {
     "GPC": ("GEORGIA POWER", "SOUTHERN"),
@@ -78,3 +79,12 @@ def apply_route_evidence(project: dict) -> None:
     ceiling = INFERRED_CEILING if "inferred" in str(project.get("geocode_method", "")) else 1.0
     project["confidence"] = round(min(ceiling, float(project["confidence"]) + 0.1), 3)
     project["confidence_tier"] = tier_for(project["confidence"], True)
+
+
+def apply_submission_ceiling(project: dict) -> None:
+    """Submitted projects stay 'medium' at best until someone verifies them (manual_fixes.csv lifts this)."""
+    if project.get("origin", "report") in ("", "report") or project.get("human_verified") == "true":
+        return
+    score = min(float(project["confidence"]), SUBMISSION_CEILING)
+    project["confidence"] = round(score, 3)
+    project["confidence_tier"] = tier_for(score, project["confidence_tier"] != "unmatched")

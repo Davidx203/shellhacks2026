@@ -217,6 +217,25 @@ def choose_pair(project: dict, cands_a: list[dict], cands_b: list[dict]) -> tupl
     return best[1], best[2]
 
 
+def _given_matches(project: dict) -> dict:
+    """Endpoints the submitter located by coordinates: taken as-is, no name matching."""
+    given = {}
+    for suffix in ("a", "b"):
+        lat, lon = project.get(f"given_lat_{suffix}"), project.get(f"given_lon_{suffix}")
+        if lat in ("", None) or lon in ("", None):
+            continue
+        given[suffix] = {
+            "feature": {
+                "type": "Feature",
+                "geometry": {"type": "Point", "coordinates": [float(lon), float(lat)]},
+                "properties": {"osm_id": "submitted", "gridlock_state": project["state"]},
+            },
+            "name_score": 100,
+            "given": True,
+        }
+    return given
+
+
 def geocode_project(project: dict, features: list[dict], inferrer=None) -> tuple[dict, dict]:
     result = dict(project)
     cands = {}
@@ -224,6 +243,8 @@ def geocode_project(project: dict, features: list[dict], inferrer=None) -> tuple
         name = project.get(f"endpoint_{suffix}", "")
         found = candidate_matches(name, features, project["state"], project["utility"]) if name else []
         cands[suffix] = _in_hint_area(project, found)
+    for suffix, given_match in _given_matches(project).items():
+        cands[suffix] = [given_match]
     both = bool(cands["a"] and cands["b"])
     for suffix in ("a", "b"):
         # An ambiguous relaxed match is only usable when the other endpoint can disambiguate it.
@@ -233,7 +254,10 @@ def geocode_project(project: dict, features: list[dict], inferrer=None) -> tuple
         matches = dict(zip(("a", "b"), choose_pair(project, cands["a"], cands["b"])))
     else:
         matches = {s: (cands[s][0] if cands[s] else None) for s in ("a", "b")}
-    methods = {s: ("name_relaxed" if m.get("relaxed") else "name") for s, m in matches.items() if m}
+    methods = {
+        s: ("submitted_coordinates" if m.get("given") else "name_relaxed" if m.get("relaxed") else "name")
+        for s, m in matches.items() if m
+    }
     if inferrer is not None:
         matches, inferred = inferrer.infer(project, matches)
         methods.update(inferred)

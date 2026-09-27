@@ -9,7 +9,7 @@ import math
 from collections import Counter
 from pathlib import Path
 
-from confidence import apply_route_evidence, score_project
+from confidence import apply_route_evidence, apply_submission_ceiling, score_project
 from cost import make_brief
 from geocode import CACHE, border_distance_mi, fetch_substations, geocode_project
 from rank import rank_overlaps
@@ -86,6 +86,8 @@ def build(raw: Path = RAW, output: Path = PROCESSED, cache: Path = CACHE) -> tup
         for project in projects:
             project["route_mi"] = ""
         print("Power-line data unavailable; skipped routes and endpoint inference (routes.geojson left as is)")
+    for project in projects:
+        apply_submission_ceiling(project)
     apply_manual_fixes(projects, output / "manual_fixes.csv")
     routes_path = output / "routes.geojson"
     routes = {}
