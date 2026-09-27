@@ -506,11 +506,48 @@ function filteredOverlaps() {
   });
 }
 
+function filtersActive() {
+  return Boolean(
+    listFilters.search || listFilters.maxDistance !== null || listFilters.minScore !== null || listFilters.voltageOnly,
+  );
+}
+
+function shownOverlapIds() {
+  return filtersActive() ? new Set(filteredOverlaps().map((overlap) => overlap.overlap_id)) : null;
+}
+
+function overlapIsShown(id) {
+  const shown = shownOverlapIds();
+  return !shown || shown.has(id);
+}
+
+function shownProjectIds() {
+  const ids = new Set();
+  filteredOverlaps().forEach((overlap) => {
+    ids.add(overlap.project_id_gpc);
+    ids.add(overlap.project_id_desc);
+  });
+  return ids;
+}
+
+function matchFilter(property, values) {
+  return values.length ? ["match", ["get", property], values, true, false] : ["==", ["get", property], "__none__"];
+}
+
+function applyFiltersToMap() {
+  if (!map || !map.getLayer("overlap-lines")) return;
+  if (selectedOverlapId && !overlapIsShown(selectedOverlapId)) clearSelectedOverlap();
+  updateOverlapVisibility();
+  const selected = selectedOverlapId ? overlapsById.get(selectedOverlapId) : null;
+  updateProjectVisibility(selected || null);
+}
+
 function renderFilteredList() {
   const items = filteredOverlaps();
   renderList(items);
   document.querySelector("#filter-count").textContent = `${items.length} shown`;
   updateListVisibility();
+  applyFiltersToMap();
 }
 
 function selectOverlap(overlap) {
@@ -591,10 +628,15 @@ function setActiveCameraButton(view) {
 
 function updateOverlapVisibility() {
   if (!map.getLayer("overlap-lines")) return;
-  map.setFilter("overlap-lines", selectedOverlapId ? ["==", ["get", "overlap_id"], selectedOverlapId] : null);
+  const shown = shownOverlapIds();
+  let lineFilter = null;
+  if (selectedOverlapId) lineFilter = ["==", ["get", "overlap_id"], selectedOverlapId];
+  else if (shown) lineFilter = matchFilter("overlap_id", [...shown]);
+  map.setFilter("overlap-lines", lineFilter);
   opportunityCaps.forEach((markers, id) => {
+    const visible = selectedOverlapId ? id === selectedOverlapId : !shown || shown.has(id);
     markers.forEach((marker) => {
-      marker.getElement().style.display = !selectedOverlapId || id === selectedOverlapId ? "grid" : "none";
+      marker.getElement().style.display = visible ? "grid" : "none";
     });
   });
 }
@@ -602,8 +644,14 @@ function updateOverlapVisibility() {
 function updateProjectVisibility(overlap) {
   if (!map.getLayer("project-lines")) return;
   if (!overlap) {
-    map.setFilter("project-lines", null);
-    applySubstationVisibility();
+    if (filtersActive()) {
+      const ids = shownProjectIds();
+      map.setFilter("project-lines", matchFilter("project_id", [...ids]));
+      applySubstationVisibility(ids);
+    } else {
+      map.setFilter("project-lines", null);
+      applySubstationVisibility();
+    }
     return;
   }
   const ids = [overlap.project_id_gpc, overlap.project_id_desc];
@@ -613,8 +661,9 @@ function updateProjectVisibility(overlap) {
 
 function visibleOpportunityCapPoints() {
   const visible = [];
+  const shown = shownOverlapIds();
   opportunityCapPoints.forEach((points, id) => {
-    if (!selectedOverlapId || id === selectedOverlapId) visible.push(...points);
+    if (selectedOverlapId ? id === selectedOverlapId : !shown || shown.has(id)) visible.push(...points);
   });
   return visible;
 }
