@@ -531,3 +531,42 @@ path.pulse-line {
     font-size: 1.5rem;
   }
 }
+
+.basemap-controls {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  z-index: 520;
+  display: flex;
+  overflow: hidden;
+  border: 1px solid rgba(23, 32, 38, 0.13);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: var(--shadow);
+  backdrop-filter: blur(8px);
+}
+
+.basemap-controls button {
+  min-width: 84px;
+  height: 40px;
+  border: 0;
+  border-right: 1px solid var(--line);
+  background: transparent;
+  color: #4f616c;
+  cursor: pointer;
+  font-size: 0.84rem;
+  font-weight: 800;
+  transition: background 150ms ease, color 150ms ease;
+}
+
+.basemap-controls button:last-child {
+  border-right: 0;
+}
+
+.basemap-controls button:hover,
+.basemap-controls button:focus-visible,
+.basemap-controls button.active {
+  background: #effaf4;
+  color: var(--overlap);
+  outline: none;
+}

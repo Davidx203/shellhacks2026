@@ -37,6 +37,14 @@ const emptyFeatureCollection = {
 
 const cameraStops = ["gpc", "center", "desc"];
 
+const basemaps = {
+  satellite: "mapbox://styles/mapbox/satellite-streets-v12",
+  streets: "mapbox://styles/mapbox/streets-v12",
+};
+let currentBasemap = "satellite";
+let dataLoaded = false;
+let layerEventsBound = false;
+
 function getMapboxToken() {
   const params = new URLSearchParams(window.location.search);
   const queryToken = params.get("mapbox_token") || params.get("token");
@@ -66,7 +74,7 @@ function initMap() {
   mapboxgl.accessToken = token;
   map = new mapboxgl.Map({
     container: "map",
-    style: "mapbox://styles/mapbox/satellite-streets-v12",
+    style: basemaps[currentBasemap],
     center: [-81.5, 33.0],
     zoom: 7,
     pitch: 45,
@@ -81,11 +89,53 @@ function initMap() {
     addTerrain();
     await load();
   });
+  map.on("style.load", restoreLayersAfterStyleChange);
 
   map.on("click", () => {
     if (suppressMapClick) return;
     clearSelectedOverlap();
   });
+}
+
+function initBasemapControls() {
+  const buttons = document.querySelectorAll("[data-basemap]");
+  try {
+    const saved = localStorage.getItem("basemap");
+    if (saved in basemaps) currentBasemap = saved;
+  } catch {}
+  buttons.forEach((button) => {
+    button.addEventListener("click", (event) => {
+      event.stopPropagation();
+      setBasemap(button.dataset.basemap);
+    });
+  });
+  markActiveBasemap();
+}
+
+function markActiveBasemap() {
+  document.querySelectorAll("[data-basemap]").forEach((button) => {
+    button.classList.toggle("active", button.dataset.basemap === currentBasemap);
+  });
+}
+
+function setBasemap(name) {
+  if (!(name in basemaps) || name === currentBasemap) return;
+  currentBasemap = name;
+  try {
+    localStorage.setItem("basemap", name);
+  } catch {}
+  markActiveBasemap();
+  if (map) map.setStyle(basemaps[name]);
+}
+
+function restoreLayersAfterStyleChange() {
+  if (!dataLoaded || map.getSource("project-lines")) return;
+  addTerrain();
+  addMapSourcesAndLayers();
+  const selected = selectedOverlapId ? overlapsById.get(selectedOverlapId) : null;
+  if (selected) updateSelectionCircles([projectCenter(selected.gpc), projectCenter(selected.desc)]);
+  updateOverlapVisibility();
+  updateProjectVisibility(selected || null);
 }
 
 function addTerrain() {
@@ -331,8 +381,11 @@ function addMapSourcesAndLayers() {
     },
   });
 
-  bindMapLayerEvents();
-  requestAnimationFrame(animateOverlapLines);
+  if (!layerEventsBound) {
+    layerEventsBound = true;
+    bindMapLayerEvents();
+    requestAnimationFrame(animateOverlapLines);
+  }
 }
 
 function bindMapLayerEvents() {
@@ -858,9 +911,11 @@ async function load() {
   drawOpportunityCaps();
   applySubstationVisibility();
   renderFilteredList();
+  dataLoaded = true;
   setStatus(`${projects.length} projects and ${overlaps.length} overlaps loaded from the API.`);
 }
 
 initListFilters();
 initCameraControls();
+initBasemapControls();
 initMap();
