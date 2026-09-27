@@ -4,6 +4,7 @@ python-multipart
 pymupdf
 pandas
 pytest
+httpx
 rapidfuzz
 requests
 httpx
