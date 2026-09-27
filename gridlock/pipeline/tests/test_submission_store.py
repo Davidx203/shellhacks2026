@@ -204,3 +204,76 @@ def test_concurrent_appends_lose_nothing_and_leave_no_temp_files(tmp_path):
     assert sorted(p.name for p in tmp_path.iterdir() if p.suffix == ".tmp") == []
     with path.open(newline="", encoding="utf-8") as f:
         assert csv.DictReader(f).fieldnames == store.SUBMISSION_COLUMNS
+
+
+# ---- review fixes: validation hardening ------------------------------------------------
+
+def good_row():
+    return prepare_form(FORM)[0]
+
+
+@pytest.mark.parametrize("field", ["project_name", "endpoint_a", "endpoint_b"])
+@pytest.mark.parametrize("value", ["<img src=x onerror=alert(1)>", "Okatie > Bluffton", "a<b"])
+def test_html_characters_are_rejected_in_names(field, value):
+    row = {**good_row(), field: value}
+    assert any("<" in e or ">" in e or "not allowed" in e for e in validate_submission(row)), validate_submission(row)
+
+
+@pytest.mark.parametrize("field", ["project_name", "endpoint_a", "endpoint_b", "source_ref", "source_file"])
+@pytest.mark.parametrize("prefix", ["=", "+", "@", "-", " =", "\t="])
+def test_formula_prefixes_are_rejected_in_every_text_field(field, prefix):
+    row = {**good_row(), field: prefix + "cmd|' /C calc'!A0"}
+    assert validate_submission(row), (field, prefix)
+
+
+def test_a_row_cannot_claim_another_utilitys_project_id():
+    row = {**good_row(), "project_id": "DESC_6807B"}                     # utility is GPC
+    assert any("project_id" in e for e in validate_submission(row))
+
+
+def test_impossible_iso_dates_are_rejected_not_just_malformed_ones():
+    for field in ("in_service_date", "build_start", "build_end", "start_date"):
+        row = {**good_row(), field: "2026-13-45"}
+        assert any(field in e for e in validate_submission(row)), field
+
+
+def test_source_file_must_look_like_one_we_write():
+    assert validate_submission({**good_row(), "source_file": "/etc/passwd"})
+    assert validate_submission({**good_row(), "source_file": "submission:report.pdf#page3"}) == []
+
+
+def test_every_real_report_row_still_passes_the_hardened_validation():
+    rows = list(csv.DictReader(open(store.ROOT / "data" / "interim" / "projects_raw.csv", encoding="utf-8")))
+    as_submitted = [{**r, "source_file": "form"} for r in rows]      # report rows carry report file paths
+    bad = [(r["project_id"], validate_submission(r)) for r in as_submitted if validate_submission(r)]
+    assert bad == []
+
+
+# ---- review fixes: number grammar -------------------------------------------------------
+
+@pytest.mark.parametrize("field,value,expected", [
+    ("est_cost_usd", "$3,000,000", "3000000"),
+    ("est_cost_usd", "3000000", "3000000"),
+    ("est_cost_usd", " $ 12,500.4 ", "12500"),
+    ("length_mi", "8.7 mi", "8.7"),
+    ("length_mi", "12 miles", "12"),
+    ("voltage_kv", "115 kV", "115"),
+    ("voltage_kv", "230", "230"),
+    ("voltage_kv", "230/115 kV", "230"),          # highest voltage mentioned, per the contract
+    ("voltage_kv", "230-115KV", "230"),
+])
+def test_well_formed_numbers_are_normalised(field, value, expected):
+    row, errors = prepare_form({**FORM, field: value})
+    assert errors == [], errors
+    assert row[field] == expected
+
+
+@pytest.mark.parametrize("field,value", [
+    ("est_cost_usd", "3e6"), ("est_cost_usd", "$3.5M"), ("est_cost_usd", "1,5"), ("est_cost_usd", "-500"),
+    ("length_mi", "1,5"), ("length_mi", "about 5"), ("length_mi", "5-7"), ("length_mi", "1.2.3"),
+    ("voltage_kv", "abc"), ("voltage_kv", "two thirty"), ("voltage_kv", "-115"),
+])
+def test_ambiguous_numbers_are_errors_not_silently_reinterpreted(field, value):
+    row, errors = prepare_form({**FORM, field: value})
+    assert any(field in e for e in errors), (field, value, errors)
+    assert row[field] == ""

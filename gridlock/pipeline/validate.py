@@ -1,5 +1,6 @@
 """Contract checks for projects_raw.csv rows (list of dicts as read by csv.DictReader)."""
 import re
+from datetime import datetime
 
 from .common import RAW_COLUMNS
 
@@ -30,6 +31,11 @@ def validate(rows, columns=None):
             v = r.get(col, "")
             if v and not _ISO.match(str(v)):
                 errs.append(f"{pid}: {col} not ISO: {v!r}")
+            elif v:
+                try:
+                    datetime.strptime(str(v), "%Y-%m-%d")
+                except ValueError:
+                    errs.append(f"{pid}: {col} is not a real date: {v!r}")
         if r.get("build_start") and r.get("build_end") and r["build_start"] > r["build_end"]:
             errs.append(f"{pid}: build_start after build_end")
         if not r.get("in_service_date"):

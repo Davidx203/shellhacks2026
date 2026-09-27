@@ -34,14 +34,13 @@ def _text(value):
     return " ".join(str(value if value is not None else "").split())
 
 
+_NUMBER = re.compile(r"\$?\s*((?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?)\s*(?:kv|mi|miles?)?", re.I)
+
+
 def _number(value):
-    text = re.sub(r"[^\d.\-]", "", str(value if value is not None else ""))
-    if text in ("", "-", "."):
-        return None
-    try:
-        return float(text)
-    except ValueError:
-        return None
+    """A plain number as people write it ($3,000,000; 8.7 mi; 115 kV), or None. Anything ambiguous is None."""
+    match = _NUMBER.fullmatch(str(value if value is not None else "").strip())
+    return float(match.group(1).replace(",", "")) if match else None
 
 
 def _numeric_field(payload, key, whole, errors):
@@ -50,11 +49,25 @@ def _numeric_field(payload, key, whole, errors):
         return ""
     number = _number(raw)
     if number is None:
-        errors.append(f"{key}: {raw!r} is not a number")
+        errors.append(f"{key}: {raw!r} is not a plain number (use digits, optionally with commas or a decimal point)")
         return ""
     if whole:
         return str(int(round(number)))
     return str(int(number)) if number == int(number) else str(number)
+
+
+def _voltage_field(payload, errors):
+    raw = _text(payload.get("voltage_kv"))
+    if not raw:
+        return ""
+    number = None if raw.startswith("-") else _number(raw)
+    if number is not None:
+        return str(int(round(number)))
+    found = None if raw.startswith("-") else max_kv(raw if "kv" in raw.lower() else raw + " kV")
+    if found:
+        return str(found)                     # e.g. 230/115 kV -> 230, the highest voltage mentioned
+    errors.append(f"voltage_kv: {raw!r} is not a voltage (for example 115 or 230 kV)")
+    return ""
 
 
 def _date_field(payload, key, errors):
@@ -119,7 +132,10 @@ def prepare_form(payload, taken_ids=()):
         errors.append("build_start: is after in_service_date")
     default_start = f"{in_service[:4]}-01-01" if in_service else ""
     build_start, build_end = clamp_window(start or default_start, in_service)
-    voltage = _numeric_field(payload, "voltage_kv", True, errors) or (str(max_kv(name)) if max_kv(name) else "")
+    if _text(payload.get("voltage_kv")):
+        voltage = _voltage_field(payload, errors)
+    else:
+        voltage = str(max_kv(name)) if max_kv(name) else ""
 
     row = dict.fromkeys(ROW_KEYS, "")
     row.update(
@@ -161,20 +177,36 @@ def _coordinate_errors(row):
     return errors
 
 
+TEXT_FIELDS = ("project_name", "endpoint_a", "endpoint_b", "source_file", "source_ref")
+NAME_FIELDS = ("project_name", "endpoint_a", "endpoint_b")
+FORMULA_PREFIXES = ("=", "+", "@", "-", "\t", "\r")
+
+
+def _text_errors(row):
+    errors = []
+    for key in TEXT_FIELDS:
+        value = str(row.get(key) or "")
+        if value[:1] in FORMULA_PREFIXES or value.lstrip()[:1] in FORMULA_PREFIXES:
+            errors.append(f"{key}: must not start with {value.lstrip()[:1]!r}")
+        if len(value) > 200:
+            errors.append(f"{key}: longer than 200 characters")
+        if "<" in value or ">" in value:
+            errors.append(f"{key}: '<' and '>' are not allowed")
+    source = str(row.get("source_file") or "")
+    if source != "form" and not source.startswith("submission:"):
+        errors.append(f"source_file: {source!r} is not a submission source")
+    return errors
+
+
 def validate_submission(row):
     """Every problem that would stop this row being saved, as plain messages."""
     errors = [m.split(": ", 1)[1] if ": " in m else m for m in validate([row])]
-    for key in ("project_name", "endpoint_a", "endpoint_b"):
-        value = str(row.get(key) or "")
-        if value[:1] in ("=", "+", "@"):
-            errors.append(f"{key}: must not start with {value[:1]!r}")
-    if len(str(row.get("project_name") or "")) > 200:
-        errors.append("project_name: longer than 200 characters")
+    errors += _text_errors(row)
     if not row.get("endpoint_a"):
         errors.append("endpoint_a: give at least one substation name")
-    project_id = str(row.get("project_id") or "")
-    if not re.fullmatch(r"(GPC|DESC)_[\w.,\-]+", project_id):
-        errors.append(f"project_id: {project_id!r} is not valid")
+    project_id, utility = str(row.get("project_id") or ""), str(row.get("utility") or "")
+    if utility not in STATE or not re.fullmatch(rf"{re.escape(utility)}_[\w.,\-]+", project_id):
+        errors.append(f"project_id: {project_id!r} must start with {utility or 'the company'}_ and use only letters, digits and . , _ -")
     errors += _coordinate_errors(row)
     return list(dict.fromkeys(errors))
 

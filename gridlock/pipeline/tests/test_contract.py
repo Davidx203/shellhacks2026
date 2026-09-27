@@ -61,3 +61,10 @@ def test_raw_columns_extend_the_contract_without_reordering_it():
     for extra in ("origin", "submission_id", "submitted_by", "submitted_at",
                   "given_lat_a", "given_lon_a", "given_lat_b", "given_lon_b"):
         assert extra in RAW_COLUMNS
+
+
+def test_validator_rejects_an_impossible_calendar_date_not_just_a_malformed_one():
+    for value in ("2026-13-45", "2026-02-30"):
+        r = good()
+        r["in_service_date"] = value
+        assert validate([r]), value
