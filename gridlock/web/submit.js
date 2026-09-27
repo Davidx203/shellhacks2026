@@ -44,9 +44,9 @@ function renderPreview(container, preview) {
     table.append(submitEl("tr", {}, [
       submitEl("td", {}, checkbox),
       submitEl("td", {}, submitEl("span", { class: `badge ${badge.className}` }, badge.label)),
-      submitEl("td", {}, `${entry.row.project_id}: ${entry.row.project_name}`),
-      submitEl("td", {}, [entry.row.endpoint_a, entry.row.endpoint_b].filter(Boolean).join(" – ")),
-      submitEl("td", {}, entry.row.in_service_date),
+      submitEl("td", {}, entryLabel(entry)),
+      submitEl("td", {}, entryEndpoints(entry)),
+      submitEl("td", {}, (entry.summary || entry.row).in_service_date),
       submitEl("td", {}, details),
     ]));
   });
@@ -97,20 +97,26 @@ async function previewForm(event) {
 
 async function commitPreview(container) {
   const preview = submitState.preview;
-  const chosen = [...container.querySelectorAll("input[type=checkbox]:checked")].map((box) => preview.rows[Number(box.dataset.index)].row);
-  if (!chosen.length) return setSubmitStatus("Tick at least one row.", true);
+  const indexes = [...container.querySelectorAll("input[type=checkbox]:checked")].map((box) => Number(box.dataset.index));
+  if (!indexes.length) return setSubmitStatus("Tick at least one row.", true);
   container.querySelectorAll("button").forEach((button) => { button.disabled = true; });
+  let result;
   try {
-    const result = await submitJson(`${API}/submissions/commit`, {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ utility: preview.utility, origin: preview.origin, submitted_by: preview.submitted_by || "", rows: chosen }),
+    result = await submitJson(`${API}/submissions/commit`, {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(buildCommitBody(preview, indexes)),
     });
-    const skipped = result.skipped.length ? ` (${result.skipped.length} skipped)` : "";
-    setSubmitStatus(`Saved ${result.saved.length} project(s)${skipped}. ${jobMessage({ status: "running" })}`);
-    await pollJob(result.job_id);
   } catch (error) {
     container.querySelectorAll("button").forEach((button) => { button.disabled = false; });
     setSubmitStatus(error.message, true);
+    return;
+  }
+  // The rows are saved from here on: Confirm stays disabled whatever happens while tracking the update.
+  const skipped = result.skipped.length ? ` (${result.skipped.length} skipped: ${result.skipped.map((s) => `${s.project_id} ${s.reason}`).join("; ")})` : "";
+  setSubmitStatus(`Saved ${result.saved.length} project(s)${skipped}. ${jobMessage({ status: "running" })}`);
+  try {
+    await pollJob(result.job_id);
+  } catch (error) {
+    setSubmitStatus(`Saved, but the update could not be tracked (${error.message}). Reload the page to see it, or check History.`, true);
   }
 }
 

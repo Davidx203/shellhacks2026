@@ -33,6 +33,29 @@ function selectableIndexes(entries) {
     (entry.status === "new" || entry.status === "update") && !(entry.errors || []).length ? [index] : []);
 }
 
+function buildCommitBody(preview, indexes) {
+  const chosen = indexes.map((index) => preview.rows[index]);
+  const body = {
+    utility: preview.utility,
+    origin: preview.origin,
+    submitted_by: preview.submitted_by || "",
+    rows: chosen.map((entry) => entry.row),
+    expected: Object.fromEntries(chosen.map((entry) => [entry.row.project_id, entry.status])),
+  };
+  if (preview.origin === "pdf" && preview.upload_sha256) body.upload_sha256 = preview.upload_sha256;
+  return body;
+}
+
+function entryLabel(entry) {
+  const shown = entry.summary || entry.row;
+  return `${shown.project_id}: ${shown.project_name}`;
+}
+
+function entryEndpoints(entry) {
+  const shown = entry.summary || entry.row;
+  return [shown.endpoint_a, shown.endpoint_b].filter(Boolean).join(" \u2013 ");
+}
+
 function jobMessage(job) {
   if (job.status === "failed") return `The update failed: ${job.message || "unknown error"}. Your submission is saved; you can retry.`;
   if (job.status === "done") return "Done. Reloading the map…";
@@ -48,5 +71,5 @@ function errorText(payload) {
 }
 
 if (typeof module !== "undefined" && module.exports) {
-  module.exports = { FORM_FIELDS, buildFormPayload, statusBadge, describeChanges, selectableIndexes, jobMessage, errorText };
+  module.exports = { FORM_FIELDS, buildFormPayload, statusBadge, describeChanges, selectableIndexes, buildCommitBody, entryLabel, entryEndpoints, jobMessage, errorText };
 }

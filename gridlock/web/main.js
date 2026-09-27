@@ -233,6 +233,14 @@ function bearingBetween(a, b) {
   return toDeg(Math.atan2(y, x));
 }
 
+function escapeHtml(value) {
+  return String(value ?? "").replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char]);
+}
+
+function namesHtml(group) {
+  return group.names.map(escapeHtml).join("<br>");
+}
+
 function setStatus(message) {
   document.querySelector("#status").textContent = message;
 }
@@ -472,16 +480,18 @@ function bindMapLayerEvents() {
     suppressNextMapClick();
     const props = event.features?.[0]?.properties;
     if (!props) return;
+    const routeNote = props.route_mi ? `Route along power line: ${escapeHtml(props.route_mi)} mi<br>` : "";
+    const submittedNote = props.origin && props.origin !== "report" ? "<em>Submitted by the company \u00b7 unverified</em><br>" : "";
     new mapboxgl.Popup({ closeButton: true })
       .setLngLat(event.lngLat)
       .setHTML(`
-        <strong>${props.project_name}</strong><br>
-        ${props.utility} · ${props.voltage_kv} kV<br>
-        In service: ${props.in_service_date}<br>
-        Confidence: ${props.confidence_tier}<br>
-        ${props.route_mi ? `Route along power line: ${props.route_mi} mi<br>` : ""}
-        ${props.origin && props.origin !== "report" ? "<em>Submitted by the company \u00b7 unverified</em><br>" : ""}
-        Source: ${props.source_ref}
+        <strong>${escapeHtml(props.project_name)}</strong><br>
+        ${escapeHtml(props.utility)} · ${escapeHtml(props.voltage_kv)} kV<br>
+        In service: ${escapeHtml(props.in_service_date)}<br>
+        Confidence: ${escapeHtml(props.confidence_tier)}<br>
+        ${routeNote}
+        ${submittedNote}
+        Source: ${escapeHtml(props.source_ref)}
       `)
       .addTo(map);
   });
@@ -521,7 +531,7 @@ function drawSubstations() {
   substationGroups.forEach((group, key) => {
     const marker = new mapboxgl.Marker({ element: substationElement(group), anchor: "center" })
       .setLngLat(lngLat(group.point))
-      .setPopup(new mapboxgl.Popup().setHTML(`<strong>Substation / project location</strong><br>${group.names.join("<br>")}`))
+      .setPopup(new mapboxgl.Popup().setHTML(`<strong>Substation / project location</strong><br>${namesHtml(group)}`))
       .addTo(map);
     substationMarkers.set(key, marker);
   });
@@ -607,10 +617,10 @@ function renderList(items) {
     li.dataset.overlapId = overlap.overlap_id;
     const button = document.createElement("button");
     button.innerHTML = `
-      <div><span class="rank">#${overlap.rank}</span> ${overlap.overlap_id}</div>
-      <div>${overlap.gpc.project_name}</div>
-      <div>${overlap.desc.project_name}</div>
-      <div class="meta">${overlap.distance_mi} mi · ${bandLabels[overlap.band] || "n/a"} · ${windowText(overlap)} · score ${overlap.score}</div>
+      <div><span class="rank">#${escapeHtml(overlap.rank)}</span> ${escapeHtml(overlap.overlap_id)}</div>
+      <div>${escapeHtml(overlap.gpc.project_name)}</div>
+      <div>${escapeHtml(overlap.desc.project_name)}</div>
+      <div class="meta">${escapeHtml(overlap.distance_mi)} mi · ${escapeHtml(bandLabels[overlap.band] || "n/a")} · ${escapeHtml(windowText(overlap))} · score ${escapeHtml(overlap.score)}</div>
     `;
     button.addEventListener("click", (event) => {
       event.stopPropagation();
@@ -954,12 +964,12 @@ function endFlyby() {
 function renderInspector(overlap) {
   document.querySelector("#inspector").innerHTML = `
     <h2>Selected opportunity</h2>
-    <p><strong>#${overlap.rank} ${overlap.overlap_id}</strong> links the closest points of two nearby GPC and DESC projects.</p>
+    <p><strong>#${escapeHtml(overlap.rank)} ${escapeHtml(overlap.overlap_id)}</strong> links the closest points of two nearby GPC and DESC projects.</p>
     <div class="inspector-grid">
-      <div class="metric"><span>Closest distance</span><b>${overlap.distance_mi} mi</b></div>
-      <div class="metric"><span>Coordination</span><b>${bandLabels[overlap.band] || "n/a"}</b></div>
-      <div class="metric"><span>Build windows</span><b>${windowText(overlap)}</b></div>
-      <div class="metric"><span>Score</span><b>${overlap.score}</b></div>
+      <div class="metric"><span>Closest distance</span><b>${escapeHtml(overlap.distance_mi)} mi</b></div>
+      <div class="metric"><span>Coordination</span><b>${escapeHtml(bandLabels[overlap.band] || "n/a")}</b></div>
+      <div class="metric"><span>Build windows</span><b>${escapeHtml(windowText(overlap))}</b></div>
+      <div class="metric"><span>Score</span><b>${escapeHtml(overlap.score)}</b></div>
       <div class="metric"><span>Voltage</span><b>${String(overlap.voltage_match).toLowerCase() === "true" ? "match" : "differs"}</b></div>
     </div>
   `;
