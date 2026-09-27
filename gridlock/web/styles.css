@@ -56,6 +56,39 @@ button {
   padding-bottom: 4px;
 }
 
+.account-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 18px;
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-weight: 750;
+}
+
+.account-bar span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.account-bar button {
+  flex: none;
+  padding: 6px 9px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #fff;
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.account-bar button:hover,
+.account-bar button:focus-visible {
+  border-color: var(--overlap);
+  outline-color: var(--overlap);
+}
+
 .eyebrow,
 h1,
 h2,

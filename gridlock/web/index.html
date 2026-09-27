@@ -3,155 +3,75 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Gridlock Radar</title>
-    <link href="https://api.mapbox.com/mapbox-gl-js/v3.8.0/mapbox-gl.css" rel="stylesheet" />
-    <link rel="stylesheet" href="./styles.css" />
+    <title>Sign in | Gridlock Radar</title>
+    <link rel="stylesheet" href="./login.css" />
   </head>
   <body>
-    <main class="layout">
-      <aside class="sidebar">
-        <header>
-          <p class="eyebrow">Gridlock Radar</p>
-          <h1>Transmission overlap radar</h1>
-          <button id="open-submit" class="submit-open" type="button">Submit a project</button>
-        </header>
-        <section class="legend">
-          <div><span class="key gpc"></span>Georgia Power</div>
-          <div><span class="key desc"></span>Dominion Energy SC</div>
-          <div><span class="line-key"></span>Coordination opportunity</div>
-        </section>
-        <section id="inspector" class="inspector">
-          <h2>Selected opportunity</h2>
-          <p>Click a ranked overlap to zoom in and show the 25 mile coordination radius.</p>
-        </section>
-        <section>
-          <div class="section-heading">
-            <h2>Filters</h2>
-            <span id="filter-count">0 shown</span>
+    <div class="page-shell">
+      <header class="site-header">
+        <div class="brand-mark" aria-hidden="true">GR</div>
+        <div class="brand-copy">
+          <strong>Gridlock Radar</strong>
+          <span>Transmission coordination workspace</span>
+        </div>
+      </header>
+
+      <main class="landing-layout">
+        <section class="intro" aria-labelledby="intro-title">
+          <div class="eyebrow"><span class="live-dot"></span> Shared project intelligence</div>
+          <h1 id="intro-title">See where the grid <em>connects.</em></h1>
+          <p>Explore planned Georgia Power and Dominion Energy South Carolina projects on one map, then find the strongest opportunities to coordinate.</p>
+
+          <div class="preview" aria-hidden="true">
+            <div class="preview-grid"></div>
+            <div class="preview-node node-gpc"><span>G</span></div>
+            <div class="preview-node node-desc"><span>D</span></div>
+            <div class="preview-link"></div>
+            <div class="preview-label label-gpc">Georgia Power</div>
+            <div class="preview-label label-desc">Dominion Energy SC</div>
+            <div class="preview-stat"><b>25 mi</b><span>coordination radius</span></div>
           </div>
-          <div class="filters">
-            <label>
-              <span>Search</span>
-              <input id="filter-search" type="search" placeholder="Project or overlap" />
-            </label>
-            <label>
-              <span>Max distance</span>
-              <select id="filter-distance">
-                <option value="">Any</option>
-                <option value="5">5 mi</option>
-                <option value="10">10 mi</option>
-                <option value="15">15 mi</option>
-                <option value="25">25 mi</option>
-              </select>
-            </label>
-            <label>
-              <span>Min score</span>
-              <select id="filter-score">
-                <option value="">Any</option>
-                <option value="0.8">0.80+</option>
-                <option value="0.6">0.60+</option>
-                <option value="0.4">0.40+</option>
-              </select>
-            </label>
-            <label class="check-row">
-              <input id="filter-voltage" type="checkbox" />
-              <span>Voltage match only</span>
-            </label>
-          </div>
+
+          <div class="intro-footnote">Two utilities. One view of nearby work.</div>
         </section>
-        <section>
-          <div class="section-heading">
-            <h2>Ranked overlaps</h2>
-            <div class="segmented" aria-label="How many overlaps to show">
-              <button type="button" data-top="all" class="active">All</button>
-              <button type="button" data-top="20">Top 20</button>
+
+        <section class="login-card" aria-labelledby="login-title">
+          <div class="card-kicker">WELCOME TO GRIDLOCK RADAR</div>
+          <h2 id="login-title">Sign in to the map</h2>
+          <p class="card-intro">Choose your company, then enter its name and the demo password.</p>
+
+          <div class="account-options" role="group" aria-label="Company account">
+            <button class="account-option" type="button" data-company="Georgia Power" aria-pressed="false">
+              <span class="company-icon icon-gpc" aria-hidden="true">G</span>
+              <span class="company-copy"><strong>Georgia Power</strong><small>GPC account</small></span>
+              <span class="selection-indicator" aria-hidden="true"></span>
+            </button>
+            <button class="account-option" type="button" data-company="Dominion Energy South Carolina" aria-pressed="false">
+              <span class="company-icon icon-desc" aria-hidden="true">D</span>
+              <span class="company-copy"><strong>Dominion Energy South Carolina</strong><small>DESC account</small></span>
+              <span class="selection-indicator" aria-hidden="true"></span>
+            </button>
+          </div>
+
+          <form id="login-form" novalidate>
+            <label for="username">Company name <span>· username</span></label>
+            <input id="username" name="username" type="text" autocomplete="username" placeholder="Choose a company above" required />
+
+            <label for="password">Password</label>
+            <div class="password-field">
+              <input id="password" name="password" type="password" autocomplete="current-password" placeholder="Enter the demo password" required />
+              <button id="toggle-password" type="button" aria-label="Show password">Show</button>
             </div>
-          </div>
-          <ol id="overlaps" class="overlaps"></ol>
+
+            <p id="login-error" class="login-error" role="alert" hidden></p>
+            <button class="submit-button" type="submit">Open map workspace <span aria-hidden="true">→</span></button>
+          </form>
+          <p class="demo-hint">Demo password for either company: <code>gridlock123</code></p>
         </section>
-      </aside>
-      <section class="map-area">
-        <div id="map"></div>
-        <div class="map-controls-stack">
-          <div id="camera-controls" class="camera-controls is-disabled" aria-label="Opportunity camera controls">
-            <button id="view-prev" type="button" title="Previous camera view">‹</button>
-            <button type="button" data-camera-view="gpc">G site</button>
-            <button type="button" data-camera-view="center">Center</button>
-            <button type="button" data-camera-view="desc">D site</button>
-            <button id="view-next" type="button" title="Next camera view">›</button>
-          </div>
-          <div class="zoom-control">
-            <span aria-hidden="true">−</span>
-            <input id="zoom-slider" type="range" min="4" max="18" step="0.05" value="7" aria-label="Zoom level" />
-            <span aria-hidden="true">+</span>
-          </div>
-          <button id="reset-view" class="reset-view" type="button">Reset view</button>
-        </div>
-        <div class="basemap-controls" aria-label="Map style">
-          <button type="button" data-basemap="satellite">Satellite</button>
-          <button type="button" data-basemap="streets">Map</button>
-        </div>
-        <div id="status" class="status">Loading fixture data...</div>
-      </section>
-    </main>
-    <dialog id="submit-dialog" class="submit-dialog" aria-labelledby="submit-title">
-      <div class="dialog-head">
-        <h2 id="submit-title">Submit a project</h2>
-        <button id="close-submit" class="dialog-close" type="button" aria-label="Close">&times;</button>
-      </div>
-      <div class="dialog-tabs" role="tablist">
-        <button type="button" data-tab="pdf" class="active">Upload PDF</button>
-        <button type="button" data-tab="form">Manual form</button>
-        <button type="button" data-tab="history">History</button>
-      </div>
-      <p id="submit-status" class="submit-status" role="status"></p>
-
-      <section data-panel="pdf">
-        <label>Company
-          <select id="pdf-utility"><option value="GPC">Georgia Power</option><option value="DESC">Dominion Energy SC</option></select>
-        </label>
-        <label>PDF in the Georgia Power IRP or Dominion project layout
-          <input id="pdf-file" type="file" accept="application/pdf" />
-        </label>
-        <label>Submitted by (optional)<input id="pdf-by" type="text" maxlength="80" /></label>
-        <button id="pdf-preview" type="button">Preview</button>
-        <div id="pdf-result"></div>
-      </section>
-
-      <section data-panel="form" hidden>
-        <form id="project-form" autocomplete="off">
-          <label>Company
-            <select name="utility"><option value="GPC">Georgia Power</option><option value="DESC">Dominion Energy SC</option></select>
-          </label>
-          <label>Utility project ID (optional)<input name="utility_project_id" type="text" /></label>
-          <label>Project name<input name="project_name" type="text" required /></label>
-          <label>Endpoint A (substation)<input name="endpoint_a" type="text" /></label>
-          <label>Endpoint B (optional)<input name="endpoint_b" type="text" /></label>
-          <label>Voltage (kV)<input name="voltage_kv" type="text" inputmode="numeric" /></label>
-          <label>Length (miles)<input name="length_mi" type="text" inputmode="decimal" /></label>
-          <label>Estimated cost (USD)<input name="est_cost_usd" type="text" inputmode="numeric" /></label>
-          <label>Build start (optional)<input name="build_start" type="date" /></label>
-          <label>In-service date<input name="in_service_date" type="date" required /></label>
-          <fieldset><legend>Optional coordinates (latitude, then longitude)</legend>
-            <label>A latitude<input name="lat_a" type="text" inputmode="decimal" /></label>
-            <label>A longitude<input name="lon_a" type="text" inputmode="decimal" /></label>
-            <label>B latitude<input name="lat_b" type="text" inputmode="decimal" /></label>
-            <label>B longitude<input name="lon_b" type="text" inputmode="decimal" /></label>
-          </fieldset>
-          <label>Submitted by (optional)<input name="submitted_by" type="text" maxlength="80" /></label>
-          <button id="form-preview" type="submit">Preview</button>
-        </form>
-        <div id="form-result"></div>
-      </section>
-
-      <section data-panel="history" hidden>
-        <div id="history-list"></div>
-      </section>
-    </dialog>
-
-    <script src="https://api.mapbox.com/mapbox-gl-js/v3.8.0/mapbox-gl.js"></script>
-    <script src="./main.js"></script>
-    <script src="./submit-helpers.js"></script>
-    <script src="./submit.js"></script>
+      </main>
+      <footer class="site-footer">Gridlock Radar · A shared view of transmission opportunities</footer>
+    </div>
+    <script src="./auth.js"></script>
+    <script src="./login.js"></script>
   </body>
 </html>

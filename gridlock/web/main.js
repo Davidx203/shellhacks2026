@@ -1,5 +1,12 @@
 const API = "http://localhost:8000";
 
+const signedInCompany = GridlockAuth.current();
+document.querySelector("#signed-in-company").textContent = signedInCompany.name;
+document.querySelector("#sign-out").addEventListener("click", () => {
+  GridlockAuth.signOut();
+  window.location.replace("./index.html");
+});
+
 const colors = {
   GPC: "#1d6ed5",
   DESC: "#e36d2f",
