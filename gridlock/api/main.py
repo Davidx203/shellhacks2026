@@ -4,7 +4,7 @@ import csv
 import json
 import sqlite3
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
@@ -30,6 +30,14 @@ class ProjectPatch(BaseModel):
     human_verified: bool = True
 
 
+class ChatMessageInput(BaseModel):
+    company: Literal["GPC", "DESC"]
+    sender_name: str
+    kind: Literal["job_update", "tool_request", "equipment_request"]
+    body: str
+    reference: str = ""
+
+
 def db() -> sqlite3.Connection:
     if not DB_PATH.exists():
         raise HTTPException(status_code=500, detail="gridlock.db not found. Run api/load_db.py first.")
@@ -46,6 +54,55 @@ def rows(sql: str, params: tuple[Any, ...] = ()) -> list[dict[str, Any]]:
 def row(sql: str, params: tuple[Any, ...] = ()) -> dict[str, Any] | None:
     result = rows(sql, params)
     return result[0] if result else None
+
+
+def ensure_messages_table(conn: sqlite3.Connection) -> None:
+    # load_db.py only replaces the project, overlap, and brief tables. Messages persist.
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS messages (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            company TEXT NOT NULL,
+            sender_name TEXT NOT NULL,
+            kind TEXT NOT NULL,
+            body TEXT NOT NULL,
+            reference TEXT NOT NULL DEFAULT '',
+            created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+        )
+    """)
+
+
+@app.get("/messages")
+def get_messages(limit: int = Query(100, ge=1, le=200), after_id: int = Query(0, ge=0)) -> list[dict[str, Any]]:
+    with db() as conn:
+        ensure_messages_table(conn)
+        if after_id:
+            result = conn.execute(
+                "SELECT * FROM messages WHERE id > ? ORDER BY id ASC LIMIT ?", (after_id, limit)
+            ).fetchall()
+        else:
+            result = conn.execute("SELECT * FROM messages ORDER BY id DESC LIMIT ?", (limit,)).fetchall()[::-1]
+        return [dict(message) for message in result]
+
+
+@app.post("/messages", status_code=201)
+def post_message(message: ChatMessageInput) -> dict[str, Any]:
+    sender_name = message.sender_name.strip()
+    body = message.body.strip()
+    reference = message.reference.strip()
+    if not 1 <= len(sender_name) <= 60:
+        raise HTTPException(status_code=422, detail="Employee name must be 1 to 60 characters")
+    if not 1 <= len(body) <= 2000:
+        raise HTTPException(status_code=422, detail="Message must be 1 to 2000 characters")
+    if len(reference) > 80:
+        raise HTTPException(status_code=422, detail="Job reference must be 80 characters or fewer")
+    with db() as conn:
+        ensure_messages_table(conn)
+        cursor = conn.execute(
+            "INSERT INTO messages (company, sender_name, kind, body, reference) VALUES (?, ?, ?, ?, ?)",
+            (message.company, sender_name, message.kind, body, reference),
+        )
+        saved = conn.execute("SELECT * FROM messages WHERE id = ?", (cursor.lastrowid,)).fetchone()
+        return dict(saved)
 
 
 @app.get("/projects")
