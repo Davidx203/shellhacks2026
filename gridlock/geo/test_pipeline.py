@@ -48,3 +48,20 @@ def test_cost_brief_states_missing_voltage_and_length_assumptions():
     assert brief["est_land_savings_usd"] == round(2 * 5280 * 100 / 43560 * 10000)
     assert "because at least one project" in brief["assumptions_note"]
     assert "$11,700,000" in brief["assumptions_note"]
+
+
+def test_cost_brief_accepts_shared_mi_and_cost_overrides():
+    pair = {"overlap_id": "OVL_1", "project_id_gpc": "GPC_1", "project_id_desc": "DESC_1"}
+    projects = {"GPC_1": {"length_mi": "10", "voltage_kv": "230"}, "DESC_1": {"length_mi": "3", "voltage_kv": "230"}}
+    default = make_brief(pair, projects)
+    assert default["shared_corridor_mi"] == 3 and default["row_width_ft"] == 150   # shorter length, 230 kV width
+
+    overridden = make_brief(pair, projects, shared_mi=8, land_cost_per_acre_usd=25000)
+    assert overridden["shared_corridor_mi"] == 8
+    assert overridden["land_cost_per_acre_usd"] == 25000
+    assert overridden["row_width_ft"] == 150   # width still comes from voltage, not the override
+    expected_acres = 8 * 5280 * 150 / 43560
+    assert overridden["shared_acres"] == round(expected_acres, 2)
+    assert overridden["est_land_savings_usd"] == round(expected_acres * 25000)
+    assert "8 shared corridor miles" in overridden["assumptions_note"]
+    assert "were given, not assumed" in overridden["assumptions_note"]

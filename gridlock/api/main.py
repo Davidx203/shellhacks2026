@@ -3,6 +3,7 @@ from __future__ import annotations
 import csv
 import json
 import sqlite3
+import sys
 from pathlib import Path
 from typing import Any, Literal
 
@@ -15,6 +16,11 @@ from api.submissions import router as submissions_router
 ROOT = Path(__file__).resolve().parents[1]
 DB_PATH = ROOT / "gridlock.db"
 MANUAL_FIXES = ROOT / "data" / "processed" / "manual_fixes.csv"
+
+GEO_DIR = ROOT / "geo"
+if str(GEO_DIR) not in sys.path:
+    sys.path.insert(0, str(GEO_DIR))
+from cost import make_brief  # noqa: E402  (needs the sys.path insert above)
 
 app = FastAPI(title="Gridlock Radar API")
 app.add_middleware(
@@ -147,31 +153,26 @@ def get_overlap(overlap_id: str) -> dict[str, Any]:
 
 
 @app.get("/briefs/{overlap_id}")
-def get_brief(overlap_id: str, shared_mi: float = 5, cost_per_acre: int = 10000) -> dict[str, Any]:
+def get_brief(overlap_id: str, shared_mi: float | None = None, cost_per_acre: int | None = None) -> dict[str, Any]:
     overlap = row("SELECT * FROM overlaps WHERE overlap_id = ?", (overlap_id,))
     if not overlap:
         raise HTTPException(status_code=404, detail="Overlap not found")
-    row_width_ft = 100
-    shared_acres = shared_mi * row_width_ft / 8.25
-    savings = round(shared_acres * cost_per_acre)
-    return {
-        "overlap_id": overlap_id,
-        "shared_corridor_mi": shared_mi,
-        "row_width_ft": row_width_ft,
-        "shared_acres": round(shared_acres, 2),
-        "land_cost_per_acre_usd": cost_per_acre,
-        "est_land_savings_usd": savings,
-        "assumptions_note": "Fixture estimate assumes one shared right-of-way corridor and 100 ft width.",
-    }
+    gpc = row("SELECT * FROM projects WHERE project_id = ?", (overlap["project_id_gpc"],))
+    desc = row("SELECT * FROM projects WHERE project_id = ?", (overlap["project_id_desc"],))
+    projects_by_id = {overlap["project_id_gpc"]: gpc, overlap["project_id_desc"]: desc}
+    return make_brief(overlap, projects_by_id, shared_mi=shared_mi, land_cost_per_acre_usd=cost_per_acre)
 
 
 @app.post("/briefs/{overlap_id}/narrative")
-def post_narrative(overlap_id: str) -> dict[str, str]:
+def post_narrative(overlap_id: str, shared_mi: float | None = None, cost_per_acre: int | None = None) -> dict[str, str]:
     overlap = get_overlap(overlap_id)
+    brief = get_brief(overlap_id, shared_mi=shared_mi, cost_per_acre=cost_per_acre)
     narrative = (
-        f"{overlap_id} is a coordination opportunity because the two projects are "
-        f"{overlap['distance_mi']} miles apart with a {overlap['time_gap_days']} day timing gap. "
-        "The estimate is directional and depends on the shared corridor and land cost assumptions."
+        f"{overlap_id} is a coordination opportunity: the two projects are "
+        f"{overlap['distance_mi']} miles apart with a {overlap['time_gap_days']} day timing gap, "
+        f"so sharing a {brief['shared_corridor_mi']:g} mile right-of-way could save roughly "
+        f"${brief['est_land_savings_usd']:,} in land costs. The estimate is directional and depends on "
+        "the shared corridor and land cost assumptions."
     )
     return {"overlap_id": overlap_id, "narrative": narrative}
 
