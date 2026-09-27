@@ -19,7 +19,9 @@ let listFilters = {
   maxDistance: null,
   minScore: null,
   voltageOnly: false,
+  topOnly: false,
 };
+const TOP_N = 20;
 
 const substationGroups = new Map();
 const substationMarkers = new Map();
@@ -265,9 +267,20 @@ function initListFilters() {
       maxDistance: distance.value ? Number(distance.value) : null,
       minScore: score.value ? Number(score.value) : null,
       voltageOnly: voltage.checked,
+      topOnly: listFilters.topOnly,
     };
     renderFilteredList();
   }
+
+  document.querySelectorAll("[data-top]").forEach((button) => {
+    button.addEventListener("click", () => {
+      listFilters.topOnly = button.dataset.top === "20";
+      document.querySelectorAll("[data-top]").forEach((other) => {
+        other.classList.toggle("active", other === button);
+      });
+      updateFilters();
+    });
+  });
 
   [search, distance, score, voltage].forEach((control) => {
     control.addEventListener("input", updateFilters);
@@ -584,6 +597,7 @@ function renderList(items) {
 
 function filteredOverlaps() {
   return overlaps.filter((overlap) => {
+    if (listFilters.topOnly && Number(overlap.rank) > TOP_N) return false;
     if (listFilters.maxDistance !== null && Number(overlap.distance_mi) > listFilters.maxDistance) return false;
     if (listFilters.minScore !== null && Number(overlap.score) < listFilters.minScore) return false;
     if (listFilters.voltageOnly && String(overlap.voltage_match).toLowerCase() !== "true") return false;
@@ -606,7 +620,11 @@ function filteredOverlaps() {
 
 function filtersActive() {
   return Boolean(
-    listFilters.search || listFilters.maxDistance !== null || listFilters.minScore !== null || listFilters.voltageOnly,
+    listFilters.search ||
+      listFilters.maxDistance !== null ||
+      listFilters.minScore !== null ||
+      listFilters.voltageOnly ||
+      listFilters.topOnly,
   );
 }
 
@@ -917,7 +935,7 @@ async function load() {
   setStatus("Loading fixture data...");
   const [projectsRes, overlapsRes] = await Promise.all([
     fetch(`${API}/projects`),
-    fetch(`${API}/overlaps?limit=20`),
+    fetch(`${API}/overlaps?limit=200`),
   ]);
   if (!projectsRes.ok || !overlapsRes.ok) throw new Error("API request failed");
   projects = await projectsRes.json();

@@ -625,3 +625,35 @@ path.pulse-line {
   top: 160px !important;
   left: 10px !important;
 }
+
+.segmented {
+  display: flex;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.segmented button {
+  height: 30px;
+  padding: 0 12px;
+  border: 0;
+  border-right: 1px solid var(--line);
+  background: transparent;
+  color: #4f616c;
+  cursor: pointer;
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.segmented button:last-child {
+  border-right: 0;
+}
+
+.segmented button:hover,
+.segmented button:focus-visible,
+.segmented button.active {
+  background: #effaf4;
+  color: var(--overlap);
+  outline: none;
+}
