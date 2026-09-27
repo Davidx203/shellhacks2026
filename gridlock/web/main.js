@@ -79,7 +79,7 @@ function initMap() {
     antialias: true,
   });
 
-  map.addControl(new mapboxgl.NavigationControl({ visualizePitch: true }), "top-left");
+  map.addControl(new mapboxgl.NavigationControl({ showZoom: false, visualizePitch: true }), "top-left");
   map.addControl(new mapboxgl.FullscreenControl(), "top-left");
 
   map.on("load", async () => {
@@ -87,10 +87,22 @@ function initMap() {
     await load();
   });
   map.on("style.load", restoreLayersAfterStyleChange);
+  initZoomSlider();
 
   map.on("click", () => {
     if (suppressMapClick) return;
     clearSelectedOverlap();
+  });
+}
+
+function initZoomSlider() {
+  const slider = document.querySelector("#zoom-slider");
+  slider.value = map.getZoom();
+  slider.addEventListener("input", () => {
+    map.setZoom(Number(slider.value));
+  });
+  map.on("zoom", () => {
+    slider.value = map.getZoom();
   });
 }
 
