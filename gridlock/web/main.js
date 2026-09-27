@@ -334,11 +334,22 @@ function projectLineFeatures() {
   });
 }
 
+const TOUCH_MI = 0.05;
+
+function closestPoints(overlap) {
+  const values = [overlap.lat_gpc, overlap.lon_gpc, overlap.lat_desc, overlap.lon_desc].map(num);
+  if (values.every((value) => value !== null)) return { gpc: [values[0], values[1]], desc: [values[2], values[3]] };
+  return { gpc: projectCenter(overlap.gpc), desc: projectCenter(overlap.desc) };
+}
+
+function isTouching(overlap) {
+  return Number(overlap.distance_mi) <= TOUCH_MI;
+}
+
 function overlapLineFeatures() {
   return overlaps.flatMap((overlap) => {
-    const gpc = projectCenter(overlap.gpc);
-    const desc = projectCenter(overlap.desc);
-    if (!gpc || !desc) return [];
+    const { gpc, desc } = closestPoints(overlap);
+    if (!gpc || !desc || isTouching(overlap)) return [];
     return [
       {
         type: "Feature",
@@ -521,9 +532,13 @@ function drawOpportunityCaps() {
   opportunityCapPoints.clear();
 
   overlaps.forEach((overlap) => {
-    const gpc = projectCenter(overlap.gpc);
-    const desc = projectCenter(overlap.desc);
+    const { gpc, desc } = closestPoints(overlap);
     if (!gpc || !desc) return;
+    if (isTouching(overlap)) {
+      opportunityCaps.set(overlap.overlap_id, [opportunityCapForPoint(gpc, "×", colors.overlap, overlap)]);
+      opportunityCapPoints.set(overlap.overlap_id, [gpc]);
+      return;
+    }
     const markers = [
       opportunityCapForPoint(gpc, "G", colors.GPC, overlap),
       opportunityCapForPoint(desc, "D", colors.DESC, overlap),
@@ -667,8 +682,7 @@ function renderFilteredList() {
 }
 
 function selectOverlap(overlap) {
-  const gpc = projectCenter(overlap.gpc);
-  const desc = projectCenter(overlap.desc);
+  const { gpc, desc } = closestPoints(overlap);
   if (!gpc || !desc) return;
 
   selectedOverlapId = overlap.overlap_id;
@@ -676,7 +690,7 @@ function selectOverlap(overlap) {
   updateProjectVisibility(overlap);
   updateListVisibility();
   updateSelectionCircles([gpc, desc]);
-  updateDistanceLabel(gpc, desc, `${overlap.distance_mi} mi`);
+  updateDistanceLabel(gpc, desc, isTouching(overlap) ? "touching" : `${overlap.distance_mi} mi`);
   renderInspector(overlap);
   setCameraControlsEnabled(true);
   setCameraView("center");
@@ -707,8 +721,7 @@ function stepCamera(direction) {
 function setCameraView(view) {
   const overlap = overlapsById.get(selectedOverlapId);
   if (!overlap) return;
-  const gpc = projectCenter(overlap.gpc);
-  const desc = projectCenter(overlap.desc);
+  const { gpc, desc } = closestPoints(overlap);
   if (!gpc || !desc) return;
 
   currentCameraIndex = Math.max(0, cameraStops.indexOf(view));
@@ -721,7 +734,8 @@ function setCameraView(view) {
     flyToSite(desc, gpc, 18);
     return;
   }
-  flyToOpportunity(gpc, desc);
+  const context = isTouching(overlap) ? [projectCenter(overlap.gpc), projectCenter(overlap.desc)].filter(Boolean) : [];
+  flyToOpportunity(gpc, desc, context);
 }
 
 function setCameraControlsEnabled(isEnabled) {
@@ -847,7 +861,7 @@ function updateDistanceLabel(a, b, text) {
   const midpoint = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
   const el = document.createElement("div");
   el.className = "distance-label";
-  el.textContent = `${text} apart`;
+  el.textContent = text === "touching" ? "touching" : `${text} apart`;
   distanceMarker = new mapboxgl.Marker({ element: el, anchor: "bottom" }).setLngLat(lngLat(midpoint)).addTo(map);
 }
 
@@ -858,11 +872,12 @@ function removeDistanceLabel() {
   }
 }
 
-function flyToOpportunity(gpc, desc) {
+function flyToOpportunity(gpc, desc, context = []) {
   endFlyby();
   if (flyByTimer) clearTimeout(flyByTimer);
   const bounds = new mapboxgl.LngLatBounds(lngLat(gpc), lngLat(gpc));
   bounds.extend(lngLat(desc));
+  context.forEach((point) => bounds.extend(lngLat(point)));
   const center = bounds.getCenter();
   const camera = map.cameraForBounds(bounds, {
     padding: { top: 130, bottom: 120, left: 430, right: 120 },

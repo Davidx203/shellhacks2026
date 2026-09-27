@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from overlap import band_for, find_overlaps
+from overlap import band_for, find_overlaps, geometry_closest
 from rank import distance_score, effective_confidence, rank_overlaps, score_overlap, time_score
 from timeline import window_relation
 
@@ -129,3 +129,20 @@ def test_implausible_endpoint_pair_is_left_out_of_overlaps():
     assert find_overlaps([wrong_match, near]) == []
     routed = find_overlaps([wrong_match, near], routes={"G": [(33.1, -80.86), (33.1, -80.84)]})
     assert routed and routed[0]["distance_mi"] < 1
+
+
+def test_closest_points_are_reported_where_the_projects_are_nearest():
+    line = project("G", "GPC", 32.0, -81.0, 32.6, -81.0)
+    substation = project("D", "DESC", 32.3, -80.96)
+    pair = find_overlaps([line, substation])[0]
+    assert (pair["lat_desc"], pair["lon_desc"]) == (32.3, -80.96)            # the substation itself
+    assert abs(pair["lat_gpc"] - 32.3) < 0.001 and abs(pair["lon_gpc"] + 81.0) < 0.001   # foot of the perpendicular on the line
+
+
+def test_crossing_projects_share_one_closest_point_and_touching_ends_do_too():
+    ns = [(32.0, -81.0), (32.6, -81.0)]
+    ew = [(32.3, -81.35), (32.3, -80.65)]
+    distance, a, b = geometry_closest(ns, ew)
+    assert distance == 0.0 and a == b and abs(a[0] - 32.3) < 1e-6 and abs(a[1] + 81.0) < 1e-6
+    shared = geometry_closest([(33.54, -82.17), (33.66, -82.196)], [(33.657, -82.159), (33.66, -82.196)])
+    assert shared[0] < 0.01

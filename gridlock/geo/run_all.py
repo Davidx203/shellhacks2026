@@ -21,7 +21,7 @@ DATA = Path(__file__).resolve().parents[1] / "data"
 RAW = DATA / "interim" / "projects_raw.csv"
 PROCESSED = DATA / "processed"
 PROJECT_EXTRA = ["lat_a", "lon_a", "lat_b", "lon_b", "lat_center", "lon_center", "osm_id_a", "osm_id_b", "confidence", "confidence_tier", "human_verified", "route_mi", "geocode_method"]
-OVERLAP_COLUMNS = ["overlap_id", "project_id_gpc", "project_id_desc", "distance_mi", "band", "time_gap_days", "windows_overlap", "overlap_days", "window_gap_days", "voltage_match", "score", "rank"]
+OVERLAP_COLUMNS = ["overlap_id", "project_id_gpc", "project_id_desc", "distance_mi", "band", "time_gap_days", "windows_overlap", "overlap_days", "window_gap_days", "lat_gpc", "lon_gpc", "lat_desc", "lon_desc", "voltage_match", "score", "rank"]
 BRIEF_COLUMNS = ["overlap_id", "shared_corridor_mi", "row_width_ft", "shared_acres", "land_cost_per_acre_usd", "est_land_savings_usd", "assumptions_note"]
 
 

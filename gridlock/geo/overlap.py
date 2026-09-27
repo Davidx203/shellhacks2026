@@ -90,31 +90,57 @@ def _point_segment(p, a, b):
     return hypot(p[0] - (a[0] + t * dx), p[1] - (a[1] + t * dy))
 
 
-def _segment_distance(p1, p2, q1, q2):
+def _point_segment_closest(p, a, b):
+    dx, dy = b[0] - a[0], b[1] - a[1]
+    length = dx * dx + dy * dy
+    t = 0.0 if length == 0 else max(0.0, min(1.0, ((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / length))
+    return a[0] + t * dx, a[1] + t * dy
+
+
+def _segment_closest(p1, p2, q1, q2):
+    """(distance, point on P, point on Q) for two segments; touching or crossing gives distance 0."""
     d1, d2 = _cross(p1, p2, q1), _cross(p1, p2, q2)
     d3, d4 = _cross(q1, q2, p1), _cross(q1, q2, p2)
     if ((d1 > 0 > d2) or (d1 < 0 < d2)) and ((d3 > 0 > d4) or (d3 < 0 < d4)):
-        return 0.0
-    return min(_point_segment(p1, q1, q2), _point_segment(p2, q1, q2),
-               _point_segment(q1, p1, p2), _point_segment(q2, p1, p2))
+        t = d1 / (d1 - d2)
+        cross = (q1[0] + t * (q2[0] - q1[0]), q1[1] + t * (q2[1] - q1[1]))
+        return 0.0, cross, cross
+    options = []
+    for p in (p1, p2):
+        q = _point_segment_closest(p, q1, q2)
+        options.append((hypot(p[0] - q[0], p[1] - q[1]), p, q))
+    for q in (q1, q2):
+        p = _point_segment_closest(q, p1, p2)
+        options.append((hypot(p[0] - q[0], p[1] - q[1]), p, q))
+    return min(options, key=lambda item: item[0])
 
 
-def geometry_distance_miles(a, b):
-    """Closest-point distance between two point lists (a single point counts as a degenerate line)."""
+def geometry_closest(a, b):
+    """(distance_mi, (lat, lon) on a, (lat, lon) on b): the closest pair of points between two point lists."""
     if len(a) == 1 and len(b) == 1:
-        return haversine_miles(*a[0], *b[0])
+        return haversine_miles(*a[0], *b[0]), a[0], b[0]
     lat0 = sum(p[0] for p in a + b) / len(a + b)
     kx, ky = MI_PER_DEG_LON_AT_EQUATOR * cos(radians(lat0)), MI_PER_DEG_LAT
     pa, pb = [(p[1] * kx, p[0] * ky) for p in a], [(p[1] * kx, p[0] * ky) for p in b]
     pa = pa if len(pa) > 1 else pa * 2
     pb = pb if len(pb) > 1 else pb * 2
-    best = float("inf")
+    best = (float("inf"), None, None)
     for p1, p2 in zip(pa, pa[1:]):
         for q1, q2 in zip(pb, pb[1:]):
-            best = min(best, _segment_distance(p1, p2, q1, q2))
-            if best == 0.0:
-                return 0.0
-    return best
+            found = _segment_closest(p1, p2, q1, q2)
+            if found[0] < best[0]:
+                best = found
+                if best[0] == 0.0:
+                    break
+        if best[0] == 0.0:
+            break
+    back = lambda p: (p[1] / ky, p[0] / kx)
+    return best[0], back(best[1]), back(best[2])
+
+
+def geometry_distance_miles(a, b):
+    """Closest-point distance between two point lists (a single point counts as a degenerate line)."""
+    return geometry_closest(a, b)[0]
 
 
 def find_overlaps(projects, max_distance_mi=MAX_DISTANCE_MI, routes=None):
@@ -131,7 +157,7 @@ def find_overlaps(projects, max_distance_mi=MAX_DISTANCE_MI, routes=None):
         for desc_project, desc_geometry, desc_box in located("DESC"):
             if _bbox_gap_mi(gpc_box, desc_box) >= max_distance_mi:
                 continue
-            distance = geometry_distance_miles(gpc_geometry, desc_geometry)
+            distance, gpc_point, desc_point = geometry_closest(gpc_geometry, desc_geometry)
             if distance >= max_distance_mi:
                 continue
 
@@ -147,6 +173,10 @@ def find_overlaps(projects, max_distance_mi=MAX_DISTANCE_MI, routes=None):
                 "project_id_desc": desc_project["project_id"],
                 "distance_mi": round(distance, 2),
                 "band": band_for(distance),
+                "lat_gpc": round(gpc_point[0], 6),
+                "lon_gpc": round(gpc_point[1], 6),
+                "lat_desc": round(desc_point[0], 6),
+                "lon_desc": round(desc_point[1], 6),
                 "time_gap_days": time_gap_days,
                 "windows_overlap": window["windows_overlap"],
                 "overlap_days": window["overlap_days"],

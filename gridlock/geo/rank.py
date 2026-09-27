@@ -93,7 +93,7 @@ def main():
     overlaps = rank_overlaps(projects)
     if args.output:
         columns = ["overlap_id", "project_id_gpc", "project_id_desc", "distance_mi", "band", "time_gap_days",
-                   "windows_overlap", "overlap_days", "window_gap_days", "voltage_match", "score", "rank"]
+                   "windows_overlap", "overlap_days", "window_gap_days", "lat_gpc", "lon_gpc", "lat_desc", "lon_desc", "voltage_match", "score", "rank"]
         with args.output.open("w", newline="", encoding="utf-8") as destination:
             writer = csv.DictWriter(destination, fieldnames=columns)
             writer.writeheader()
