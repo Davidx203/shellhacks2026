@@ -35,10 +35,19 @@ def border_distance_mi(lat: float, lon: float) -> float:
     return best
 
 
+ABBREVIATIONS = {"ST": "SAINT", "FT": "FORT", "MT": "MOUNT"}
+GENERIC_TOKENS = {"NORTH", "SOUTH", "EAST", "WEST", "CENTER", "CENTRAL", "PRIMARY", "INDUSTRIAL", "PARK", "COUNTY", "CREEK"}
+RELAXED_SCORE = 72
+
+
 def normalize_name(value: str) -> str:
     value = re.sub(r"\([^)]*\)|#\s*\d+", " ", value.upper())
     value = re.sub(r"\b(?:SUBSTATION|SUB|PRIMARY|SAV)\b", " ", value)
-    return " ".join(re.findall(r"[A-Z0-9]+", value))
+    return " ".join(ABBREVIATIONS.get(token, token) for token in re.findall(r"[A-Z0-9]+", value))
+
+
+def _distinctive(tokens: set[str]) -> bool:
+    return any(len(token) >= 5 and token not in GENERIC_TOKENS for token in tokens)
 
 
 def _inside_ring(lon: float, lat: float, ring: list) -> bool:
@@ -143,8 +152,30 @@ def candidate_matches(name: str, features: list[dict], expected_state: str, util
             continue
         if score >= MIN_NAME_SCORE:
             found.append({"feature": feature, "name_score": score})
+    if not found:
+        found = _relaxed_matches(normalized, features, expected_state, utility)
     found.sort(key=lambda item: -item["name_score"])
     return found[:limit]
+
+
+def _relaxed_matches(normalized: str, features: list[dict], expected_state: str, utility: str) -> list[dict]:
+    """Second pass: one name's words are all contained in the other (SALUDA vs SALUDA COUNTY).
+
+    Scored below every strict match, and only on a distinctive shared word so that
+    generic names such as NORTH cannot match NORTH DUBLIN.
+    """
+    query = set(normalized.split())
+    found = []
+    for feature in features:
+        props = feature["properties"]
+        if props.get("gridlock_state") != expected_state:
+            continue
+        candidate = set(normalize_name(props.get("name", "")).split())
+        if not candidate or not (query <= candidate or candidate <= query):
+            continue
+        if _distinctive(query & candidate):
+            found.append({"feature": feature, "name_score": RELAXED_SCORE, "relaxed": True})
+    return found
 
 
 def match_endpoint(name: str, features: list[dict], expected_state: str, utility: str) -> dict | None:
@@ -203,6 +234,11 @@ def geocode_project(project: dict, features: list[dict]) -> tuple[dict, dict]:
         name = project.get(f"endpoint_{suffix}", "")
         found = candidate_matches(name, features, project["state"], project["utility"]) if name else []
         cands[suffix] = _in_hint_area(project, found)
+    both = bool(cands["a"] and cands["b"])
+    for suffix in ("a", "b"):
+        # An ambiguous relaxed match is only usable when the other endpoint can disambiguate it.
+        if not both and len(cands[suffix]) > 1 and cands[suffix][0].get("relaxed"):
+            cands[suffix] = []
     if cands["a"] and cands["b"]:
         matches = dict(zip(("a", "b"), choose_pair(project, cands["a"], cands["b"])))
     else:

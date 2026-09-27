@@ -49,3 +49,26 @@ def test_plausible_length_uses_stated_length_then_voltage():
     assert max_plausible_miles({"length_mi": "10", "voltage_kv": "115"}) == 30
     assert max_plausible_miles({"length_mi": "", "voltage_kv": "115"}) == 60
     assert max_plausible_miles({"length_mi": "", "voltage_kv": ""}) == 100
+
+
+def test_abbreviations_match_spelled_out_names():
+    features = [sub("Saint George", 33.19, -80.58, "stg", state="SC", operator="Dominion Energy")]
+    p = {**project("St George - Sumter 230kV: Rebuild", "St George", ""), "utility": "DESC", "state": "SC"}
+    located, _ = geocode_project(p, features)
+    assert located["osm_id_a"] == "stg"
+
+
+def test_relaxed_match_needs_a_distinctive_word():
+    features = [sub("Saluda", 34.0, -81.7, "saluda", state="SC", operator="Dominion Energy"),
+                sub("North Dublin", 32.5, -82.9, "nd", state="GA")]
+    p = {**project("SALUDA COUNTY - X 115KV", "Saluda County", ""), "utility": "DESC", "state": "SC"}
+    located, _ = geocode_project(p, features)
+    assert located["osm_id_a"] == "saluda"
+    generic = {**project("NORTH 115KV", "North", "")}
+    assert geocode_project(generic, features)[0]["osm_id_a"] == ""
+
+
+def test_ambiguous_relaxed_single_endpoint_is_dropped():
+    features = [sub("Dawson Crossing", 34.4, -83.9, "d1"), sub("Dawson Junction", 31.7, -84.4, "d2")]
+    located, _ = geocode_project(project("DAWSON 230KV BANK", "DAWSON", ""), features)
+    assert located["osm_id_a"] == ""
