@@ -6,6 +6,8 @@ import argparse
 import csv
 import json
 import math
+import os
+import tempfile
 from collections import Counter
 from pathlib import Path
 
@@ -23,6 +25,20 @@ PROCESSED = DATA / "processed"
 PROJECT_EXTRA = ["lat_a", "lon_a", "lat_b", "lon_b", "lat_center", "lon_center", "osm_id_a", "osm_id_b", "confidence", "confidence_tier", "human_verified", "route_mi", "geocode_method"]
 OVERLAP_COLUMNS = ["overlap_id", "project_id_gpc", "project_id_desc", "distance_mi", "band", "time_gap_days", "windows_overlap", "overlap_days", "window_gap_days", "lat_gpc", "lon_gpc", "lat_desc", "lon_desc", "voltage_match", "score", "rank"]
 BRIEF_COLUMNS = ["overlap_id", "shared_corridor_mi", "row_width_ft", "shared_acres", "land_cost_per_acre_usd", "est_land_savings_usd", "assumptions_note"]
+
+
+def write_text_atomic(path: Path, text: str) -> None:
+    """Replace `path` in one step so the API never reads a half-written file while a rebuild runs."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=path.name + ".", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            handle.write(text)
+        os.replace(tmp, path)
+    except BaseException:
+        if os.path.exists(tmp):
+            os.unlink(tmp)
+        raise
 
 
 def read_csv(path: Path) -> tuple[list[str], list[dict]]:
@@ -80,7 +96,7 @@ def build(raw: Path = RAW, output: Path = PROCESSED, cache: Path = CACHE) -> tup
         route_features = attach_routes(projects, grid)
         for project in projects:
             apply_route_evidence(project)
-        (output / "routes.geojson").write_text(json.dumps({"type": "FeatureCollection", "features": route_features}), encoding="utf-8")
+        write_text_atomic(output / "routes.geojson", json.dumps({"type": "FeatureCollection", "features": route_features}))
         print(f"Routes along power lines: {len(route_features)}")
     else:
         for project in projects:

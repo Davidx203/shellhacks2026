@@ -57,3 +57,16 @@ def test_missing_baseline_and_report_text_is_a_clear_error(tmp_path):
     import pytest
     with pytest.raises(FileNotFoundError, match="projects_report.csv"):
         build_raw.build(raw=tmp_path / "none", baseline=tmp_path / "projects_report.csv", submissions=tmp_path / "none.csv")
+
+
+# ---- review fixes: files a rebuild rewrites are replaced atomically ---------------------------
+
+def test_a_failed_write_leaves_the_previous_file_untouched_and_no_temp_files(tmp_path):
+    import pytest
+    out = tmp_path / "projects_raw.csv"
+    build_raw.write([dict(baseline_row(), origin="report")], out)
+    before = out.read_text(encoding="utf-8")
+    with pytest.raises(AttributeError):
+        build_raw.write([dict(baseline_row(project_id="DESC_2"), origin="report"), object()], out)   # blows up mid-write
+    assert out.read_text(encoding="utf-8") == before
+    assert [p.name for p in tmp_path.iterdir()] == ["projects_raw.csv"]

@@ -1,5 +1,7 @@
 """Build data/interim/projects_raw.csv: parsed report rows (baseline) with submissions laid over them."""
 import csv
+import os
+import tempfile
 from collections import Counter
 from pathlib import Path
 
@@ -23,14 +25,22 @@ def read_rows(path):
 
 
 def write(rows, out=None, columns=None):
+    """Write the CSV to a temp file in the same folder and swap it in, so a reader (or a crash) never sees a partial file."""
     out = Path(out) if out else OUT
     columns = columns or RAW_COLUMNS
     out.parent.mkdir(parents=True, exist_ok=True)
-    with out.open("w", newline="", encoding="utf-8") as f:
-        w = csv.DictWriter(f, fieldnames=columns, extrasaction="ignore")
-        w.writeheader()
-        for r in rows:
-            w.writerow({k: ("" if r.get(k) is None else r[k]) for k in columns})
+    fd, tmp = tempfile.mkstemp(dir=out.parent, prefix=out.name + ".", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", newline="", encoding="utf-8") as f:
+            w = csv.DictWriter(f, fieldnames=columns, extrasaction="ignore")
+            w.writeheader()
+            for r in rows:
+                w.writerow({k: ("" if r.get(k) is None else r[k]) for k in columns})
+        os.replace(tmp, out)
+    except BaseException:
+        if os.path.exists(tmp):
+            os.unlink(tmp)
+        raise
 
 
 def report_rows(raw=None, baseline=None):
