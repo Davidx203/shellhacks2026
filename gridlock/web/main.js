@@ -548,6 +548,18 @@ function opportunityCapForPoint(point, label, color, overlap) {
   return new mapboxgl.Marker({ element: el, anchor: "center" }).setLngLat(lngLat(point)).addTo(map);
 }
 
+const bandLabels = {
+  crossing: "Crossing",
+  share_land: "Share land",
+  share_logistics: "Share logistics",
+  share_crews: "Share crews",
+};
+
+function windowText(overlap) {
+  if (String(overlap.windows_overlap).toLowerCase() === "true") return `windows overlap ${overlap.overlap_days} d`;
+  return overlap.window_gap_days ? `${overlap.window_gap_days} d gap` : "timing unknown";
+}
+
 function renderList(items) {
   const list = document.querySelector("#overlaps");
   list.innerHTML = "";
@@ -559,7 +571,7 @@ function renderList(items) {
       <div><span class="rank">#${overlap.rank}</span> ${overlap.overlap_id}</div>
       <div>${overlap.gpc.project_name}</div>
       <div>${overlap.desc.project_name}</div>
-      <div class="meta">${overlap.distance_mi} mi · ${overlap.time_gap_days} days · score ${overlap.score}</div>
+      <div class="meta">${overlap.distance_mi} mi · ${bandLabels[overlap.band] || "n/a"} · ${windowText(overlap)} · score ${overlap.score}</div>
     `;
     button.addEventListener("click", (event) => {
       event.stopPropagation();
@@ -890,12 +902,13 @@ function endFlyby() {
 function renderInspector(overlap) {
   document.querySelector("#inspector").innerHTML = `
     <h2>Selected opportunity</h2>
-    <p><strong>#${overlap.rank} ${overlap.overlap_id}</strong> connects nearby project center points from GPC and DESC.</p>
+    <p><strong>#${overlap.rank} ${overlap.overlap_id}</strong> links the closest points of two nearby GPC and DESC projects.</p>
     <div class="inspector-grid">
-      <div class="metric"><span>Distance</span><b>${overlap.distance_mi} mi</b></div>
-      <div class="metric"><span>Time gap</span><b>${overlap.time_gap_days} days</b></div>
+      <div class="metric"><span>Closest distance</span><b>${overlap.distance_mi} mi</b></div>
+      <div class="metric"><span>Coordination</span><b>${bandLabels[overlap.band] || "n/a"}</b></div>
+      <div class="metric"><span>Build windows</span><b>${windowText(overlap)}</b></div>
       <div class="metric"><span>Score</span><b>${overlap.score}</b></div>
-      <div class="metric"><span>Voltage</span><b>${overlap.voltage_match === "true" ? "match" : "differs"}</b></div>
+      <div class="metric"><span>Voltage</span><b>${String(overlap.voltage_match).toLowerCase() === "true" ? "match" : "differs"}</b></div>
     </div>
   `;
 }

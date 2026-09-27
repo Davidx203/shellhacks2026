@@ -20,7 +20,7 @@ DATA = Path(__file__).resolve().parents[1] / "data"
 RAW = DATA / "interim" / "projects_raw.csv"
 PROCESSED = DATA / "processed"
 PROJECT_EXTRA = ["lat_a", "lon_a", "lat_b", "lon_b", "lat_center", "lon_center", "osm_id_a", "osm_id_b", "confidence", "confidence_tier", "human_verified", "route_mi"]
-OVERLAP_COLUMNS = ["overlap_id", "project_id_gpc", "project_id_desc", "distance_mi", "time_gap_days", "voltage_match", "score", "rank"]
+OVERLAP_COLUMNS = ["overlap_id", "project_id_gpc", "project_id_desc", "distance_mi", "band", "time_gap_days", "windows_overlap", "overlap_days", "window_gap_days", "voltage_match", "score", "rank"]
 BRIEF_COLUMNS = ["overlap_id", "shared_corridor_mi", "row_width_ft", "shared_acres", "land_cost_per_acre_usd", "est_land_savings_usd", "assumptions_note"]
 
 
@@ -79,7 +79,12 @@ def build(raw: Path = RAW, output: Path = PROCESSED, cache: Path = CACHE) -> tup
             project["route_mi"] = ""
         print("Power-line data unavailable; skipped routes (routes.geojson left as is)")
     apply_manual_fixes(projects, output / "manual_fixes.csv")
-    overlaps = rank_overlaps(projects)
+    routes_path = output / "routes.geojson"
+    routes = {}
+    if routes_path.exists():
+        for feature in json.loads(routes_path.read_text(encoding="utf-8"))["features"]:
+            routes[feature["properties"]["project_id"]] = [(lat, lon) for lon, lat in feature["geometry"]["coordinates"]]
+    overlaps = rank_overlaps(projects, routes)
     lookup = {p["project_id"]: p for p in projects}
     briefs = [make_brief(pair, lookup) for pair in overlaps[:10]]
     write_csv(output / "projects.csv", columns + PROJECT_EXTRA, projects)

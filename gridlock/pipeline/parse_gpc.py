@@ -2,7 +2,7 @@
 import re
 from pathlib import Path
 
-from .common import endpoints, iso_date, max_kv
+from .common import clamp_window, endpoints, iso_date, max_kv
 
 _TEAMS = re.compile(r"^Teams # (\S+)")
 _NEED = re.compile(r"Need Date (\S+)")
@@ -20,6 +20,9 @@ def parse_text(text, source_file="gpc_irp_vol3.txt"):
         dates = lines[i + 1]
         need, start = _NEED.search(dates), _START.search(dates)
         a, b = endpoints(name)
+        start_iso = iso_date(start.group(1)) if start else ""
+        need_iso = iso_date(need.group(1)) if need else ""
+        build_start, build_end = clamp_window(start_iso, need_iso)
         rows.append({
             "project_id": f"GPC_{m.group(1)}",
             "utility": "GPC",
@@ -31,8 +34,10 @@ def parse_text(text, source_file="gpc_irp_vol3.txt"):
             "project_type": "",
             "length_mi": None,
             "est_cost_usd": None,
-            "start_date": iso_date(start.group(1)) if start else "",
-            "in_service_date": iso_date(need.group(1)) if need else "",
+            "start_date": start_iso,
+            "in_service_date": need_iso,
+            "build_start": build_start,
+            "build_end": build_end,
             "source_file": source_file,
             "source_ref": f"Teams # {m.group(1)}",
         })

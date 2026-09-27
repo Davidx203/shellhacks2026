@@ -5,7 +5,7 @@ from datetime import datetime
 COLUMNS = [
     "project_id", "utility", "state", "project_name", "endpoint_a", "endpoint_b",
     "voltage_kv", "project_type", "length_mi", "est_cost_usd", "start_date",
-    "in_service_date", "source_file", "source_ref",
+    "in_service_date", "build_start", "build_end", "source_file", "source_ref",
 ]
 
 _DATE = re.compile(r"\b(\d{1,2})/(\d{1,2})/(\d{2}|\d{4})\b")
@@ -35,6 +35,15 @@ def iso_date(text):
     mo, d, y = m.groups()
     fmt = "%m/%d/%y" if len(y) == 2 else "%m/%d/%Y"
     return datetime.strptime(f"{mo}/{d}/{y}", fmt).strftime("%Y-%m-%d")
+
+
+def clamp_window(start_iso, end_iso):
+    """(build_start, build_end) with start never after end; blank end means no window."""
+    if not end_iso:
+        return "", ""
+    if not start_iso:
+        start_iso = end_iso
+    return min(start_iso, end_iso), end_iso
 
 
 def max_kv(text):

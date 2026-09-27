@@ -58,13 +58,16 @@ Put this in `geo/test_overlap.py`. If all 6 match, your math is right. Heads up:
 File: `geo/rank.py`
 
 ```
-distance_score = 1 - (distance_mi / 25)
-time_score     = max(0, 1 - time_gap_days / 1825)     # fades to 0 at 5 years
+distance_score = 1 - (distance_mi / 25)            # closest-point distance; primary signal
+time_score     = 0.7 + 0.3 * share_of_shorter_window_overlapped   if build windows overlap
+               = 0.7 * max(0, 1 - window_gap_days / 1095)        otherwise
 voltage_score  = 1 if voltage_match else 0
 confidence     = min(confidence_gpc, confidence_desc)
 
-score = (0.6 * distance_score + 0.3 * time_score + 0.1 * voltage_score) * (0.5 + 0.5 * confidence)
+score = (0.60 * distance_score + 0.35 * time_score + 0.05 * voltage_score) * (0.5 + 0.5 * confidence)
 ```
+
+Distance is the primary signal and build-window timing is a strong secondary one. `distance_mi` is the closest-point distance between the two projects' geometries, not the distance between centers.
 
 The confidence multiplier means a shaky location can never top the list. Sort by `score`, assign `rank` and `overlap_id` in that order. Keep the weights at the top of the file as named constants, because judges may ask why you chose them. Be ready to explain: "Distance matters most because it's the challenge's primary signal; timing is secondary."
 

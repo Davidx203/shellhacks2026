@@ -8,11 +8,24 @@ from overlap import find_overlaps
 
 
 DEFAULT_PROJECTS = Path(__file__).resolve().parents[1] / "data" / "fixtures" / "projects.csv"
-DISTANCE_WEIGHT = 0.6
-TIME_WEIGHT = 0.3
-VOLTAGE_WEIGHT = 0.1
+DISTANCE_WEIGHT = 0.60
+TIME_WEIGHT = 0.35
+VOLTAGE_WEIGHT = 0.05
 MAX_DISTANCE_MI = 25.0
-TIME_WINDOW_DAYS = 1825
+OVERLAP_BASE = 0.7
+WINDOW_FADE_DAYS = 1095
+
+
+def time_score(overlap):
+    """1.0 when the shorter build window sits fully inside the other; 0.7 when they only touch;
+    fades to 0 over three years of gap between non-overlapping windows."""
+    if overlap.get("window_gap_days") is None:
+        return 0.0
+    if overlap["windows_overlap"]:
+        shorter = overlap["shorter_window_days"]
+        share = 1.0 if not shorter else min(1.0, overlap["overlap_days"] / shorter)
+        return OVERLAP_BASE + (1 - OVERLAP_BASE) * share
+    return OVERLAP_BASE * max(0.0, 1 - overlap["window_gap_days"] / WINDOW_FADE_DAYS)
 
 
 def score_overlap(overlap, projects_by_id):
@@ -20,20 +33,18 @@ def score_overlap(overlap, projects_by_id):
     gpc = projects_by_id[overlap["project_id_gpc"]]
     desc = projects_by_id[overlap["project_id_desc"]]
     distance_score = max(0.0, 1 - overlap["distance_mi"] / MAX_DISTANCE_MI)
-    time_gap = overlap["time_gap_days"]
-    time_score = max(0.0, 1 - time_gap / TIME_WINDOW_DAYS) if time_gap is not None else 0.0
     voltage_score = 1.0 if overlap["voltage_match"] else 0.0
     confidence = min(float(gpc["confidence"]), float(desc["confidence"]))
     return (
         DISTANCE_WEIGHT * distance_score
-        + TIME_WEIGHT * time_score
+        + TIME_WEIGHT * time_score(overlap)
         + VOLTAGE_WEIGHT * voltage_score
     ) * (0.5 + 0.5 * confidence)
 
 
-def rank_overlaps(projects):
+def rank_overlaps(projects, routes=None):
     projects_by_id = {project["project_id"]: project for project in projects}
-    overlaps = find_overlaps(projects)
+    overlaps = find_overlaps(projects, routes=routes)
     for overlap in overlaps:
         overlap["score"] = score_overlap(overlap, projects_by_id)
 
@@ -42,6 +53,7 @@ def rank_overlaps(projects):
         overlap["overlap_id"] = f"OVL_{rank}"
         overlap["rank"] = rank
         overlap["score"] = round(overlap["score"], 3)
+        overlap.pop("shorter_window_days", None)
     return overlaps
 
 
@@ -59,8 +71,8 @@ def main():
 
     overlaps = rank_overlaps(projects)
     if args.output:
-        columns = ["overlap_id", "project_id_gpc", "project_id_desc", "distance_mi",
-                   "time_gap_days", "voltage_match", "score", "rank"]
+        columns = ["overlap_id", "project_id_gpc", "project_id_desc", "distance_mi", "band", "time_gap_days",
+                   "windows_overlap", "overlap_days", "window_gap_days", "voltage_match", "score", "rank"]
         with args.output.open("w", newline="", encoding="utf-8") as destination:
             writer = csv.DictWriter(destination, fieldnames=columns)
             writer.writeheader()

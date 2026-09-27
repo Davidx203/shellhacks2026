@@ -93,6 +93,7 @@ def test_parse_page_43():
     assert r["est_cost_usd"] == 3000000
     assert r["in_service_date"] == "2027-12-31"
     assert r["start_date"] == ""
+    assert (r["build_start"], r["build_end"]) == ("2027-01-01", "2027-12-31")
     assert r["source_ref"] == "Project 43 of 44"
 
 
@@ -114,3 +115,17 @@ def test_multiline_name_and_two_dates():
     by_id = {r["project_id"]: r for r in parse_all(PAGES)}
     assert by_id["DESC_6341A-F"]["project_name"].endswith("#2:") or "Hamlin" in by_id["DESC_6341A-F"]["project_name"]
     assert by_id["DESC_6859"]["in_service_date"] == "2025-10-01"
+
+
+def test_spend_start_uses_first_budget_year_with_money():
+    from pipeline.parse_desc import spend_start
+    row = "$0 $0 $100 $200 $0 $0 $300"
+    assert spend_start(row, "2027-12-31") == "2025-01-01"
+    assert spend_start("$5 $0 $0 $0 $0 $0 $5", "2024-06-01") == "2023-01-01"
+    assert spend_start("$0 $0 $0 $0 $0 $0 $9", "2030-05-01") == "2030-01-01"
+
+
+@needs_raw
+def test_every_desc_project_has_a_valid_build_window():
+    for r in parse_all(PAGES):
+        assert r["build_start"] and r["build_end"] and r["build_start"] <= r["build_end"], r["project_id"]
