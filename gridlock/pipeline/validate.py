@@ -1,7 +1,7 @@
 """Contract checks for projects_raw.csv rows (list of dicts as read by csv.DictReader)."""
 import re
 
-from .common import COLUMNS
+from .common import RAW_COLUMNS
 
 TYPES = {"new_line", "rebuild", "reconductor", "substation", "relay", "other"}
 STATE = {"GPC": "GA", "DESC": "SC"}
@@ -10,7 +10,7 @@ _ISO = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
 def validate(rows, columns=None):
     errs = []
-    if columns is not None and list(columns) != COLUMNS:
+    if columns is not None and list(columns) != RAW_COLUMNS:
         errs.append(f"columns differ from contract: {columns}")
     seen = set()
     for r in rows:

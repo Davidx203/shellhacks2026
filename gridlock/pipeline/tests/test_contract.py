@@ -47,7 +47,7 @@ def test_real_csv_meets_contract():
     with CSV.open(newline="", encoding="utf-8") as f:
         reader = csv.DictReader(f)
         rows = list(reader)
-        assert reader.fieldnames == COLUMNS
+        assert reader.fieldnames == RAW_COLUMNS
     assert validate(rows) == []
     assert {r["utility"] for r in rows} <= {"GPC", "DESC"}
 
