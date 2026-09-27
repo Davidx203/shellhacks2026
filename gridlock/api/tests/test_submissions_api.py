@@ -1,5 +1,8 @@
 import csv
+import hashlib
+import os
 import threading
+import time
 
 import pymupdf
 import pytest
@@ -60,6 +63,7 @@ class FakeRebuilder:
 def client(tmp_path, monkeypatch):
     monkeypatch.setattr(submissions, "SUBMISSIONS_PATH", tmp_path / "submissions.csv")
     monkeypatch.setattr(submissions, "BASELINE_PATH", tmp_path / "projects_report.csv")
+    monkeypatch.setattr(submissions, "UPLOAD_DIR", tmp_path / "uploads")
     monkeypatch.setattr(submissions, "rebuilder", FakeRebuilder())
     return TestClient(app)
 
@@ -270,3 +274,57 @@ def test_a_partial_form_update_changes_only_what_was_filled_in_and_previews_the_
 def test_every_preview_entry_carries_a_summary_for_the_table(client):
     entry = client.post("/submissions/preview/form", json=FORM).json()["rows"][0]
     assert entry["summary"]["project_id"] == "GPC_SUB1" and entry["summary"]["project_name"].startswith("Okatie")
+
+
+# ---- review fixes: the original PDF is kept -----------------------------------------------------
+
+def pdf_commit_body(preview, **over):
+    return {"utility": "DESC", "origin": "pdf", "submitted_by": "Ana", "rows": [preview["rows"][0]["row"]],
+            "upload_sha256": preview["upload_sha256"], **over}
+
+
+def test_preview_returns_the_uploads_hash_and_holds_the_bytes_pending(client, tmp_path):
+    data = make_pdf(DESC_PAGE)
+    preview = post_pdf(client, data).json()
+    sha = hashlib.sha256(data).hexdigest()
+    assert preview["upload_sha256"] == sha
+    assert (tmp_path / "uploads" / "pending" / f"{sha}.pdf").read_bytes() == data
+
+
+def test_commit_keeps_the_pdf_and_points_every_saved_row_at_it(client, tmp_path):
+    data = make_pdf(DESC_PAGE)
+    preview = post_pdf(client, data).json()
+    sha = preview["upload_sha256"]
+    assert client.post("/submissions/commit", json=pdf_commit_body(preview)).status_code == 200
+    assert (tmp_path / "uploads" / f"{sha}.pdf").read_bytes() == data
+    assert not (tmp_path / "uploads" / "pending" / f"{sha}.pdf").exists()
+    from pipeline.submission_store import read_submissions
+    assert f"sha256:{sha[:16]}" in read_submissions(submissions.SUBMISSIONS_PATH)[0]["source_ref"]
+
+
+@pytest.mark.parametrize("sha", ["0" * 64, "../../etc/passwd", "nothex", "A" * 64, ""])
+def test_commit_with_a_missing_or_malformed_upload_reference_saves_nothing(client, sha):
+    preview = post_pdf(client, make_pdf(DESC_PAGE)).json()
+    body = pdf_commit_body(preview, upload_sha256=sha)
+    response = client.post("/submissions/commit", json=body)
+    if sha == "":
+        assert response.status_code == 200            # no reference given: a PDF row without a kept file is allowed
+    else:
+        assert response.status_code == 422 and "upload" in response.json()["detail"].lower()
+        assert client.get("/submissions").json() == []
+
+
+def test_an_upload_reference_on_a_form_submission_is_refused(client):
+    body = commit_body(client)
+    body["upload_sha256"] = "0" * 64
+    assert client.post("/submissions/commit", json=body).status_code == 422
+
+
+def test_stale_pending_uploads_are_cleaned_up_on_the_next_preview(client, tmp_path):
+    old = tmp_path / "uploads" / "pending" / ("f" * 64 + ".pdf")
+    old.parent.mkdir(parents=True)
+    old.write_bytes(b"%PDF-old")
+    stale = time.time() - 3 * 24 * 3600
+    os.utime(old, (stale, stale))
+    post_pdf(client, make_pdf(DESC_PAGE))
+    assert not old.exists()

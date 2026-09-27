@@ -2,6 +2,10 @@
 from __future__ import annotations
 
 import csv
+import hashlib
+import os
+import re
+import time
 from pathlib import Path
 from typing import Literal
 
@@ -17,6 +21,7 @@ from pipeline.submission_store import (
 ROOT = Path(__file__).resolve().parents[1]
 SUBMISSIONS_PATH = ROOT / "data" / "interim" / "submissions.csv"
 BASELINE_PATH = ROOT / "data" / "interim" / "projects_report.csv"
+UPLOAD_DIR = ROOT / "data" / "submissions"
 rebuilder = Rebuilder()
 
 router = APIRouter(prefix="/submissions", tags=["submissions"])
@@ -39,6 +44,46 @@ def _baseline_rows() -> list[dict]:
 def _current_by_id() -> dict[str, dict]:
     """The report baseline with every active submission laid over it: the truth, not the last rebuild's output."""
     return current_by_id(_baseline_rows(), SUBMISSIONS_PATH)
+
+
+PENDING_MAX_AGE_SECONDS = 24 * 3600
+_SHA256 = re.compile(r"[0-9a-f]{64}")
+
+
+def _pending_dir() -> Path:
+    return UPLOAD_DIR / "pending"
+
+
+def _hold_upload(data: bytes) -> str:
+    """Keep the previewed PDF (by content hash) until it is confirmed; drop abandoned ones after a day."""
+    sha = hashlib.sha256(data).hexdigest()
+    pending = _pending_dir()
+    pending.mkdir(parents=True, exist_ok=True)
+    target = pending / f"{sha}.pdf"
+    if target.exists():
+        os.utime(target, None)
+    else:
+        tmp = pending / f".{sha}.tmp"
+        tmp.write_bytes(data)
+        os.replace(tmp, target)
+    cutoff = time.time() - PENDING_MAX_AGE_SECONDS
+    for old in pending.glob("*.pdf"):
+        if old.stat().st_mtime < cutoff:
+            old.unlink(missing_ok=True)
+    return sha
+
+
+def _keep_upload(sha: str) -> None:
+    """Move a confirmed upload from pending to permanent storage."""
+    if not _SHA256.fullmatch(sha):
+        raise HTTPException(status_code=422, detail="The upload reference is not valid; upload the PDF again.")
+    final = UPLOAD_DIR / f"{sha}.pdf"
+    if final.exists():
+        return
+    pending = _pending_dir() / f"{sha}.pdf"
+    if not pending.exists():
+        raise HTTPException(status_code=422, detail="The uploaded PDF is no longer available; upload it again.")
+    os.replace(pending, final)
 
 
 SUMMARY_FIELDS = ("project_id", "project_name", "endpoint_a", "endpoint_b", "in_service_date")
@@ -69,7 +114,7 @@ async def preview_pdf(utility: str = Form(...), file: UploadFile = File(...)) ->
             errors.append("duplicate project_id within this PDF")
         seen.add(row["project_id"])
         entries.append(_entry(row, errors, current))
-    return {"utility": utility, "origin": "pdf", "filename": file.filename, "rows": entries}
+    return {"utility": utility, "origin": "pdf", "filename": file.filename, "upload_sha256": _hold_upload(data), "rows": entries}
 
 
 @router.post("/preview/form")
@@ -87,6 +132,7 @@ class CommitBody(BaseModel):
     submitted_by: str = ""
     rows: list[dict]
     expected: dict[str, str] = {}      # project_id -> the status the submitter saw in the preview
+    upload_sha256: str = ""            # the previewed PDF to keep (pdf submissions only)
 
 
 @router.post("/commit")
@@ -106,6 +152,12 @@ def commit(body: CommitBody) -> dict:
             skipped.append({"project_id": project_id, "reason": "; ".join(errors)})
         else:
             valid.append(row)
+    if body.upload_sha256:
+        if body.origin != "pdf":
+            raise HTTPException(status_code=422, detail="An upload reference only applies to PDF submissions.")
+        _keep_upload(body.upload_sha256)
+        stamp = f" [pdf sha256:{body.upload_sha256[:16]}]"
+        valid = [{**row, "source_ref": (row["source_ref"] + stamp).strip()} for row in valid]
     company = UTILITY_NAMES[utility]
     note = " ".join(body.submitted_by.split())
     ids, not_saved = commit_rows(valid, body.origin, f"{company} ({note})" if note else company,
