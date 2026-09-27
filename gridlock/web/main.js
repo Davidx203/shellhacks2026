@@ -757,6 +757,11 @@ function clearSelectedOverlap() {
   `;
   costBriefRequestId += 1;
   document.querySelector("#cost-brief").hidden = true;
+  document.querySelector("#cost-shared-mi").value = "";
+  document.querySelector("#cost-per-acre").value = "";
+  document.querySelector("#cost-narrative").textContent = "";
+  document.querySelector("#cost-result").innerHTML = "";
+  document.querySelector("#cost-assumptions").textContent = "";
 }
 
 function stepCamera(direction) {
