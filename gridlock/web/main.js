@@ -1040,9 +1040,9 @@ async function renderCostBrief(overlap) {
   if (requestId !== costBriefRequestId) return;
   resultEl.innerHTML = `
     <div class="metric"><span>Shared corridor</span><b>${escapeHtml(brief.shared_corridor_mi)} mi</b></div>
+    <div class="metric"><span>Est. land savings</span><b>${escapeHtml(formatUsd(brief.est_land_savings_usd))}</b></div>
     <div class="metric"><span>Right-of-way width</span><b>${escapeHtml(brief.row_width_ft)} ft</b></div>
     <div class="metric"><span>Shared land</span><b>${escapeHtml(brief.shared_acres)} acres</b></div>
-    <div class="metric"><span>Est. land savings</span><b>${escapeHtml(formatUsd(brief.est_land_savings_usd))}</b></div>
   `;
   assumptionsEl.textContent = brief.assumptions_note || "";
 }
